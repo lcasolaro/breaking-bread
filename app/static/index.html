@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Breaking Bread</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <span class="logo">Breaking Bread</span>
+  <nav>
+    <button class="tab-btn active" data-tab="ricette">Ricette</button>
+    <button class="tab-btn" data-tab="varianti">Varianti</button>
+    <button class="tab-btn" data-tab="party">Pizza Party</button>
+  </nav>
+  <div class="header-actions">
+    <a class="btn btn-secondary btn-sm" href="/api/import-template" download="template_ricette.xlsx" id="btn-template">Scarica Template</a>
+    <button class="btn btn-secondary btn-sm" id="btn-import">Importa da Excel</button>
+    <button class="btn btn-primary btn-sm" id="btn-new-recipe">+ Nuova Ricetta</button>
+  </div>
+</header>
+
+<main>
+  <!-- ── Tab: Ricette ──────────────────────────────────────────────────── -->
+  <div class="tab-pane active" id="tab-ricette">
+    <div class="section-header">
+      <h1 class="section-title">Le mie Ricette</h1>
+    </div>
+    <div class="recipes-grid" id="recipes-grid">
+      <div class="empty-state">
+        <p>Nessuna ricetta trovata.</p>
+        <button class="btn btn-primary" id="btn-import-empty">Importa da Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: Varianti ────────────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-varianti">
+    <div class="section-header">
+      <h1 class="section-title">Varianti Pizza</h1>
+    </div>
+    <div class="varianti-layout">
+      <div class="varianti-recipe-selector" id="varianti-recipe-selector">
+        <!-- Recipe pills inserted by JS -->
+      </div>
+      <div id="varianti-content">
+        <div class="empty-state">
+          <p>Seleziona una ricetta per vedere le varianti.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: Pizza Party ──────────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-party">
+    <div class="section-header">
+      <h1 class="section-title">Pizza Party</h1>
+    </div>
+    <div class="party-layout">
+      <!-- Left: steps -->
+      <div class="party-steps">
+
+        <!-- Step 1: Recipe -->
+        <div class="party-step">
+          <div class="party-step-header">
+            <span class="step-num">1</span> Seleziona Ricetta
+          </div>
+          <div class="party-step-body">
+            <div class="recipe-radio-grid" id="party-recipe-list">
+              <p style="color:var(--text-3); font-size:.85rem;">Caricamento ricette...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Dough params -->
+        <div class="party-step">
+          <div class="party-step-header">
+            <span class="step-num">2</span> Parametri Impasto
+          </div>
+          <div class="party-step-body">
+            <div class="params-grid">
+              <div class="param-field">
+                <label>Numero Palline</label>
+                <input type="number" id="party-pieces" min="1" value="6">
+              </div>
+              <div class="param-field">
+                <label>Peso Pallina (g)</label>
+                <input type="number" id="party-ball-weight" min="50" step="5" value="255">
+              </div>
+              <div class="param-field">
+                <label>Idratazione (%)</label>
+                <input type="number" id="party-hydration" min="50" max="100" step="1" value="70">
+              </div>
+              <div class="param-field">
+                <label>Sale (%)</label>
+                <input type="number" id="party-salt" min="0" max="5" step="0.1" value="2.5">
+              </div>
+              <div class="param-field">
+                <label>Lievito (%)</label>
+                <input type="number" id="party-yeast" min="0" max="5" step="0.01" value="0.75">
+              </div>
+              <div class="param-field">
+                <label>BIGA (%)</label>
+                <input type="number" id="party-biga" min="0" max="100" step="5" value="0">
+              </div>
+              <div class="param-field">
+                <label>POOLISH (%)</label>
+                <input type="number" id="party-poolish" min="0" max="100" step="5" value="0">
+              </div>
+              <div class="param-field">
+                <label>AUTOLISI (%)</label>
+                <input type="number" id="party-autolisi" min="0" max="100" step="5" value="0">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Variant composition -->
+        <div class="party-step">
+          <div class="party-step-header">
+            <span class="step-num">3</span> Composizione Serata
+          </div>
+          <div class="party-step-body">
+            <div id="party-composizione-rows"></div>
+            <button class="btn btn-ghost btn-sm" id="btn-add-composizione-row" style="margin-top:8px">+ Aggiungi Variante</button>
+            <div class="piece-warning" id="party-piece-warning" style="display:none">
+              Attenzione: il totale delle pizze per variante non corrisponde al numero di palline!
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Portion size -->
+        <div class="party-step">
+          <div class="party-step-header">
+            <span class="step-num">4</span> Dimensione Porzione
+          </div>
+          <div class="party-step-body">
+            <div class="portion-grid" id="portion-grid">
+              <button class="portion-btn" data-val="2">1/2 pizza</button>
+              <button class="portion-btn" data-val="3">1/3 pizza</button>
+              <button class="portion-btn active" data-val="4">1/4 pizza</button>
+              <button class="portion-btn" data-val="6">1/6 pizza</button>
+              <button class="portion-btn" data-val="8">1/8 pizza</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right: results -->
+      <div class="results-panel" id="results-panel">
+        <div class="results-header">
+          <span class="results-title">Risultati</span>
+          <button class="btn btn-secondary btn-sm" id="btn-calc" style="display:none">Calcola</button>
+        </div>
+        <div id="results-empty" class="results-empty">
+          Configura i parametri per calcolare l'impasto e i condimenti.
+        </div>
+        <div id="results-content" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Modal: Nuova / Modifica Ricetta ────────────────────────────────── -->
+<div class="modal-overlay" id="modal-recipe">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-recipe-title">Nuova Ricetta</span>
+      <button class="btn-icon" id="modal-recipe-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="recipe-id-field">
+      <div class="form-group">
+        <label>Nome Ricetta</label>
+        <input type="text" id="rf-name" placeholder="es. Pizza Napoletana">
+      </div>
+      <div class="form-group">
+        <label>Descrizione (opzionale)</label>
+        <input type="text" id="rf-description" placeholder="Note generali sull'impasto">
+      </div>
+
+      <div id="recipe-params-section" style="display:none">
+        <div class="params-section-label">Parametri Impasto</div>
+        <div class="form-row-3">
+          <div class="form-group"><label>Numero panetti</label><input type="number" id="rf-pieces" min="1" value="6"></div>
+          <div class="form-group"><label>Peso panetto (g)</label><input type="number" id="rf-ball" min="50" step="5" value="255"></div>
+          <div class="form-group"><label>Idratazione (%)</label><input type="number" id="rf-hydration" min="40" max="100" step="1" value="65"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>BIGA (%)</label><input type="number" id="rf-biga" min="0" max="100" step="5" value="0"></div>
+          <div class="form-group"><label>POOLISH (%)</label><input type="number" id="rf-poolish" min="0" max="100" step="5" value="0"></div>
+          <div class="form-group"><label>AUTOLISI (%)</label><input type="number" id="rf-autolisi" min="0" max="100" step="5" value="0"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>Idrat. BIGA (%)</label><input type="number" id="rf-biga-hydration" min="20" max="80" step="1" value="44"></div>
+          <div class="form-group"><label>Lievito BIGA (% far. BIGA)</label><input type="number" id="rf-biga-yeast" min="0" max="5" step="0.1" value="0.5"></div>
+          <div class="form-group"><label>Lievito POOLISH (% far. POOLISH)</label><input type="number" id="rf-poolish-yeast" min="0" max="5" step="0.05" value="0.1"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>Acqua AUTOLISI (%, 0=idrat.)</label><input type="number" id="rf-autolisi-water" min="0" max="100" step="1" value="0"></div>
+          <div class="form-group"><!-- spacer --></div>
+          <div class="form-group"><!-- spacer --></div>
+        </div>
+        <div class="params-section-label" style="margin-top:8px">Chiusura Impasto</div>
+        <div class="form-row-3">
+          <div class="form-group"><label>Sale (% far. tot.)</label><input type="number" id="rf-salt" min="0" max="5" step="0.1" value="2.5"></div>
+          <div class="form-group"><label>Lievito tot. (% far. tot.)</label><input type="number" id="rf-yeast" min="0" max="5" step="0.01" value="1.0"></div>
+          <div class="form-group"><!-- spacer --></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>Carbone vegetale (% far. tot.)</label><input type="number" id="rf-carbone" min="0" max="5" step="0.05" value="0"></div>
+          <div class="form-group"><label>Olio (% far. tot.)</label><input type="number" id="rf-olio" min="0" max="10" step="0.5" value="0"></div>
+          <div class="form-group"><!-- spacer --></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Ingredienti aggiuntivi <span class="form-hint" style="display:inline">(in % sulla farina)</span></label>
+        <div class="extras-list" id="extras-list"></div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px" id="btn-add-extra">+ Aggiungi Ingrediente</button>
+      </div>
+
+      <div class="form-group">
+        <label>Note</label>
+        <textarea id="rf-notes" rows="2" placeholder="Tempi, temperature, consigli..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-recipe-cancel">Annulla</button>
+      <button class="btn btn-primary" id="btn-recipe-save">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Nuova Variante ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-variant">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-variant-title">Aggiungi Variante</span>
+      <button class="btn-icon" id="modal-variant-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="variant-id-field">
+      <input type="hidden" id="variant-recipe-id-field">
+      <div class="form-group">
+        <label>Nome Variante</label>
+        <input type="text" id="vf-name" placeholder="es. Margherita">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-variant-cancel">Annulla</button>
+      <button class="btn btn-primary" id="btn-variant-save">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Topping ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-topping">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-topping-title">Aggiungi Condimento</span>
+      <button class="btn-icon" id="modal-topping-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="topping-id-field">
+      <input type="hidden" id="topping-variant-id-field">
+      <div class="form-group">
+        <label>Nome Ingrediente</label>
+        <input type="text" id="tf-name" placeholder="es. Mozzarella fior di latte">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantità per pizza (g)</label>
+          <input type="number" id="tf-qty" min="0" step="5" value="0">
+        </div>
+        <div class="form-group">
+          <label>kcal/100g</label>
+          <input type="number" id="tf-kcal" min="0" step="1" placeholder="es. 242">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Proteine/100g</label>
+          <input type="number" id="tf-protein" min="0" step="0.1" placeholder="g">
+        </div>
+        <div class="form-group">
+          <label>Carboidrati/100g</label>
+          <input type="number" id="tf-carbs" min="0" step="0.1" placeholder="g">
+        </div>
+        <div class="form-group">
+          <label>Grassi/100g</label>
+          <input type="number" id="tf-fat" min="0" step="0.1" placeholder="g">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-topping-cancel">Annulla</button>
+      <button class="btn btn-primary" id="btn-topping-save">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Import Result ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Importazione Excel</span>
+      <button class="btn-icon" id="modal-import-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-import-body">
+      <div style="text-align:center; padding:20px">
+        <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 12px"></div>
+        <p style="color:var(--text-3)">Importazione in corso...</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="btn-import-ok" style="display:none">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script src="/static/app.js" type="module"></script>
+</body>
+</html>
