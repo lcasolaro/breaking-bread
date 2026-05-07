@@ -473,6 +473,95 @@ def _import_from_template(wb, reset: bool):
     }
 
 
+def export_to_excel() -> "openpyxl.Workbook":
+    """Export all recipes and variants from DB into the importable template format."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: Istruzioni ──────────────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Istruzioni"
+    ws.column_dimensions['A'].width = 72
+    ws['A1'] = '🍕 BREAKING BREAD — Esportazione Ricette'
+    ws['A1'].font = Font(bold=True, size=14, color='C8550A')
+    ws['A2'] = 'Questo file può essere reimportato tramite il pulsante "Importa da Excel" nell\'app.'
+    ws['A3'] = 'Le colonne NON devono essere rinominate. I numeri decimali usano il punto (es. 0.5).'
+
+    # ── Sheet 2: Ricette ─────────────────────────────────────────────────────
+    ws2 = wb.create_sheet("Ricette")
+    recipe_headers = [
+        'Nome', 'Descrizione',
+        'Num. Panetti', 'Peso Panetto (g)', 'Idratazione (%)',
+        'BIGA (%)', 'Idrat. BIGA (%)', 'Lievito BIGA (% far. BIGA)',
+        'POOLISH (%)', 'Lievito POOLISH (% far. POOLISH)',
+        'AUTOLISI (%)', 'Acqua AUTOLISI (%, 0=idrat.)',
+        'Sale (% far. tot.)', 'Lievito tot. (% far. tot.)',
+        'Carbone Vegetale (% far. tot.)', 'Olio (% far. tot.)', 'Note',
+    ]
+    col_widths = [28, 35, 14, 16, 14, 9, 14, 24, 12, 26, 12, 22, 18, 20, 22, 16, 35]
+    for c, (h, w) in enumerate(zip(recipe_headers, col_widths), 1):
+        cell = ws2.cell(row=1, column=c, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='C8550A')
+        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+        ws2.column_dimensions[ws2.cell(row=1, column=c).column_letter].width = w
+    ws2.row_dimensions[1].height = 42
+
+    recipes = db.get_recipes()
+    for i, r in enumerate(recipes, 2):
+        vals = [
+            r['name'],
+            r.get('description') or '',
+            r['default_pieces'],
+            r['default_ball_g'],
+            r['hydration_pct'],
+            r['biga_pct'],
+            r.get('biga_hydration_pct', 44),
+            r.get('biga_yeast_pct', 0.5),
+            r['poolish_pct'],
+            r.get('poolish_yeast_pct', 0.1),
+            r['autolisi_pct'],
+            r.get('autolisi_water_pct', 0),
+            r['salt_pct'],
+            r['yeast_pct'],
+            r.get('carbone_pct', 0),
+            r.get('olio_pct', 0),
+            r.get('notes') or '',
+        ]
+        for c, v in enumerate(vals, 1):
+            ws2.cell(row=i, column=c, value=v)
+
+    # ── Sheet 3: Varianti ────────────────────────────────────────────────────
+    ws3 = wb.create_sheet("Varianti")
+    variant_headers = ['Ricetta', 'Variante', 'Ingrediente', 'g/pizza', 'kcal/100g',
+                       'Proteine/100g', 'Carboidrati/100g', 'Grassi/100g']
+    widths3 = [28, 20, 28, 10, 12, 14, 16, 12]
+    for c, (h, w) in enumerate(zip(variant_headers, widths3), 1):
+        cell = ws3.cell(row=1, column=c, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1a7fa8')
+        cell.alignment = Alignment(horizontal='center')
+        ws3.column_dimensions[ws3.cell(row=1, column=c).column_letter].width = w
+
+    row_idx = 2
+    for r in recipes:
+        full = db.get_recipe(r['id'])
+        for variant in full.get('variants', []):
+            for topping in variant.get('toppings', []):
+                ws3.cell(row=row_idx, column=1, value=r['name'])
+                ws3.cell(row=row_idx, column=2, value=variant['name'])
+                ws3.cell(row=row_idx, column=3, value=topping['name'])
+                ws3.cell(row=row_idx, column=4, value=topping['quantity_g'])
+                ws3.cell(row=row_idx, column=5, value=topping.get('kcal_per100'))
+                ws3.cell(row=row_idx, column=6, value=topping.get('protein_per100'))
+                ws3.cell(row=row_idx, column=7, value=topping.get('carbs_per100'))
+                ws3.cell(row=row_idx, column=8, value=topping.get('fat_per100'))
+                row_idx += 1
+
+    return wb
+
+
 def create_import_template():
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment

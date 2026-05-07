@@ -105,6 +105,19 @@ def download_template():
     )
 
 
+@app.get("/api/export-excel")
+def export_excel():
+    from app.importer import export_to_excel
+    buf = io.BytesIO()
+    export_to_excel().save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=ricette_export.xlsx"}
+    )
+
+
 # ── Variants ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/variants")
