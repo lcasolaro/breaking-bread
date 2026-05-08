@@ -253,23 +253,31 @@ def parse_timings(ws):
 
 # ── Main import function ──────────────────────────────────────────────────────
 
-def import_excel(path: str = EXCEL_PATH, reset: bool = False) -> dict:
+def import_excel(source=None, reset: bool = False) -> dict:
     """
     Import recipes from Excel into the DB.
+    source can be a file path (str) or a BytesIO object.
     If reset=True, clears all existing recipes first.
     Returns a summary dict.
     """
+    if source is None:
+        source = EXCEL_PATH
+
     errors = []
     recipes_added = 0
     variants_added = 0
     toppings_added = 0
     timing_added = 0
 
-    if not os.path.exists(path):
-        return {"ok": False, "error": f"File non trovato: {path}"}
+    if isinstance(source, (str, os.PathLike)):
+        if not os.path.exists(source):
+            return {"ok": False, "error": f"File non trovato: {source}"}
+        path_label = os.path.basename(source)
+    else:
+        path_label = getattr(source, 'name', 'upload.xlsx')
 
     try:
-        wb = openpyxl.load_workbook(path, data_only=True)
+        wb = openpyxl.load_workbook(source, data_only=True)
     except Exception as e:
         return {"ok": False, "error": f"Errore apertura file: {e}"}
 
@@ -347,7 +355,7 @@ def import_excel(path: str = EXCEL_PATH, reset: bool = False) -> dict:
                 timing_added += 1
 
     db.log_import(
-        os.path.basename(path),
+        path_label,
         recipes_added,
         f"varianti: {variants_added}, topping: {toppings_added}, guide: {timing_added}"
     )
@@ -364,7 +372,7 @@ def import_excel(path: str = EXCEL_PATH, reset: bool = False) -> dict:
 
 def _import_from_template(wb, reset: bool):
     ws = wb['Ricette']
-    ws_var = wb.get('Varianti')
+    ws_var = wb['Varianti'] if 'Varianti' in wb.sheetnames else None
 
     recipes_added = 0; variants_added = 0; toppings_added = 0; errors = []
 
@@ -423,8 +431,8 @@ def _import_from_template(wb, reset: bool):
             'autolisi_water_pct': sf(col(row, 'Acqua AUTOLISI (%, 0=idrat.)', 0)),
             'salt_pct':    sf(col(row, 'Sale (% far. tot.)', 2.5)),
             'yeast_pct':   sf(col(row, 'Lievito tot. (% far. tot.)', 1.0)),
-            'malto_pct': 0.0,
-            'carbone_pct': sf(col(row, 'Carbone Vegetale (% far. tot.)', 0)),
+            'malto_pct': sf(col(row, 'Malto Diastasico (% biga+poolish)', 0)),
+            'carbone_pct': 0,
             'olio_pct':    sf(col(row, 'Olio (% far. tot.)', 0)),
             'extra_ingredients': [],
             'notes': str(col(row, 'Note', '') or '').strip() or None,
@@ -497,9 +505,9 @@ def export_to_excel() -> "openpyxl.Workbook":
         'POOLISH (%)', 'Lievito POOLISH (% far. POOLISH)',
         'AUTOLISI (%)', 'Acqua AUTOLISI (%, 0=idrat.)',
         'Sale (% far. tot.)', 'Lievito tot. (% far. tot.)',
-        'Carbone Vegetale (% far. tot.)', 'Olio (% far. tot.)', 'Note',
+        'Malto Diastasico (% biga+poolish)', 'Olio (% far. tot.)', 'Note',
     ]
-    col_widths = [28, 35, 14, 16, 14, 9, 14, 24, 12, 26, 12, 22, 18, 20, 22, 16, 35]
+    col_widths = [28, 35, 14, 16, 14, 9, 14, 24, 12, 26, 12, 22, 18, 20, 26, 16, 35]
     for c, (h, w) in enumerate(zip(recipe_headers, col_widths), 1):
         cell = ws2.cell(row=1, column=c, value=h)
         cell.font = Font(bold=True, color='FFFFFF')
@@ -525,7 +533,7 @@ def export_to_excel() -> "openpyxl.Workbook":
             r.get('autolisi_water_pct', 0),
             r['salt_pct'],
             r['yeast_pct'],
-            r.get('carbone_pct', 0),
+            r.get('malto_pct', 0),
             r.get('olio_pct', 0),
             r.get('notes') or '',
         ]
@@ -592,7 +600,7 @@ def create_import_template():
         '• Le ricette con lo stesso nome vengono saltate (non duplicate).',
         '• I numeri decimali usano il punto come separatore (es. 0.5, non 0,5).',
         '• Lascia 0 nei campi che non usi (es. BIGA=0 se non usi la biga).',
-        '• Il malto diastasico è calcolato automaticamente (7g/kg di farina) — non serve indicarlo.',
+        '• Il carbone vegetale è fisso a 7g/kg di farina — non serve indicarlo.',
         '',
         '📐 CALCOLO IMPASTO:',
         '• Impasto totale = Num.Panetti × Peso Panetto',
@@ -612,9 +620,9 @@ def create_import_template():
         'POOLISH (%)', 'Lievito POOLISH (% far. POOLISH)',
         'AUTOLISI (%)', 'Acqua AUTOLISI (%, 0=idrat.)',
         'Sale (% far. tot.)', 'Lievito tot. (% far. tot.)',
-        'Carbone Vegetale (% far. tot.)', 'Olio (% far. tot.)', 'Note'
+        'Malto Diastasico (% biga+poolish)', 'Olio (% far. tot.)', 'Note'
     ]
-    col_widths = [28, 35, 14, 16, 14, 9, 14, 24, 12, 26, 12, 22, 18, 20, 22, 16, 35]
+    col_widths = [28, 35, 14, 16, 14, 9, 14, 24, 12, 26, 12, 22, 18, 20, 26, 16, 35]
     for c, (h, w) in enumerate(zip(headers, col_widths), 1):
         cell = ws2.cell(row=1, column=c, value=h)
         cell.font = Font(bold=True, color='FFFFFF')

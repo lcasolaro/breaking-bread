@@ -818,41 +818,54 @@ async function refreshMenuTab() {
 // ── Import ─────────────────────────────────────────────────────────────────────
 
 async function triggerImport() {
-  openModal('modal-import');
-  document.getElementById('modal-import-body').innerHTML = `
-    <div style="text-align:center; padding:24px">
-      <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 12px"></div>
-      <p style="color:var(--text-3)">Importazione in corso...</p>
-    </div>`;
-  document.getElementById('btn-import-ok').style.display = 'none';
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xlsx';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
 
-  try {
-    const res = await api('POST', '/api/import-excel');
-    let html = '';
-    if (res.ok) {
-      html = `
-        <p style="color:var(--green); font-weight:700; margin-bottom:12px">Importazione completata!</p>
-        <ul style="font-size:.9rem; line-height:2">
-          <li>Ricette aggiunte: <strong>${res.recipes_added}</strong></li>
-          <li>Varianti: <strong>${res.variants_added}</strong></li>
-          <li>Condimenti: <strong>${res.toppings_added}</strong></li>
-          <li>Guide tempistiche: <strong>${res.timing_guides_added}</strong></li>
-        </ul>`;
-      if (res.errors && res.errors.length) {
-        html += `<p style="color:var(--gold); margin-top:12px; font-size:.82rem">
-          Avvisi: ${res.errors.join(' · ')}</p>`;
+    openModal('modal-import');
+    document.getElementById('modal-import-body').innerHTML = `
+      <div style="text-align:center; padding:24px">
+        <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 12px"></div>
+        <p style="color:var(--text-3)">Importazione in corso...</p>
+      </div>`;
+    document.getElementById('btn-import-ok').style.display = 'none';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch('/api/import-excel', { method: 'POST', body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const res = await resp.json();
+      let html = '';
+      if (res.ok) {
+        html = `
+          <p style="color:var(--green); font-weight:700; margin-bottom:12px">Importazione completata!</p>
+          <ul style="font-size:.9rem; line-height:2">
+            <li>Ricette aggiunte: <strong>${res.recipes_added}</strong></li>
+            <li>Varianti: <strong>${res.variants_added}</strong></li>
+            <li>Ingredienti: <strong>${res.toppings_added}</strong></li>
+            <li>Guide tempistiche: <strong>${res.timing_guides_added}</strong></li>
+          </ul>`;
+        if (res.errors && res.errors.length) {
+          html += `<p style="color:var(--gold); margin-top:12px; font-size:.82rem">
+            Avvisi: ${res.errors.join(' · ')}</p>`;
+        }
+      } else {
+        html = `<p style="color:var(--red)">Errore: ${res.error}</p>`;
       }
-    } else {
-      html = `<p style="color:var(--red)">Errore: ${res.error}</p>`;
+      document.getElementById('modal-import-body').innerHTML = `<div style="padding:4px">${html}</div>`;
+      document.getElementById('btn-import-ok').style.display = 'inline-flex';
+      await loadRecipes();
+    } catch (e) {
+      document.getElementById('modal-import-body').innerHTML =
+        `<p style="color:var(--red); padding:8px">Errore durante l'importazione: ${e.message}</p>`;
+      document.getElementById('btn-import-ok').style.display = 'inline-flex';
     }
-    document.getElementById('modal-import-body').innerHTML = `<div style="padding:4px">${html}</div>`;
-    document.getElementById('btn-import-ok').style.display = 'inline-flex';
-    await loadRecipes();
-  } catch (e) {
-    document.getElementById('modal-import-body').innerHTML =
-      `<p style="color:var(--red); padding:8px">Errore durante l'importazione: ${e.message}</p>`;
-    document.getElementById('btn-import-ok').style.display = 'inline-flex';
-  }
+  };
+  input.click();
 }
 
 // ── Menù Pizze Tab ────────────────────────────────────────────────────────────

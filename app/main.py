@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -427,6 +427,7 @@ def update_timing_guide(guide_id: int, body: TimingBody):
 # ── Import ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/import-excel")
-def do_import(reset: bool = False):
-    result = import_excel(reset=reset)
+async def do_import(file: UploadFile = File(...), reset: bool = False):
+    buf = io.BytesIO(await file.read())
+    result = import_excel(buf, reset=reset)
     return result
