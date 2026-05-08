@@ -32,10 +32,6 @@ def scale_dough(
     target_flour_g: Optional[float] = None,
     ball_weight_g: Optional[float] = None,
 ) -> ScaleResult:
-    """
-    Scale a dough recipe using baker's percentages.
-    Drive from target_pieces (+ optional ball_weight_g) or target_flour_g.
-    """
     extras = extra_ingredients or []
     extra_sum_pct = sum(e.get("pct", 0) for e in extras)
     sum_pcts = hydration_pct + salt_pct + yeast_pct + extra_sum_pct
@@ -52,7 +48,6 @@ def scale_dough(
         pieces = target_pieces
         total_dough = flour * dough_per_flour
     else:
-        # fallback: keep original proportions
         flour = float(base_flour_g)
         pieces = default_pieces
         total_dough = flour * dough_per_flour
@@ -86,18 +81,26 @@ def scale_dough(
     )
 
 
-def calc_topping_nutrition(quantity_g: float, kcal_per100, protein_per100, carbs_per100, fat_per100):
+def calc_topping_nutrition(
+    quantity_g: float,
+    kcal_per100,
+    protein_per100,
+    carbs_per100,
+    fat_per100,
+    fiber_per100=None,
+):
     factor = quantity_g / 100
     return {
-        "kcal": round((kcal_per100 or 0) * factor, 1),
+        "kcal":      round((kcal_per100    or 0) * factor, 1),
         "protein_g": round((protein_per100 or 0) * factor, 1),
-        "carbs_g": round((carbs_per100 or 0) * factor, 1),
-        "fat_g": round((fat_per100 or 0) * factor, 1),
+        "carbs_g":   round((carbs_per100   or 0) * factor, 1),
+        "fat_g":     round((fat_per100     or 0) * factor, 1),
+        "fiber_g":   round((fiber_per100   or 0) * factor, 1),
     }
 
 
 def sum_macros(macro_list: list) -> dict:
-    result = {"kcal": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+    result = {"kcal": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0, "fiber_g": 0.0}
     for m in macro_list:
         for k in result:
             result[k] += m.get(k, 0)
@@ -116,7 +119,7 @@ def calc_party(
     biga_pct: float,
     poolish_pct: float,
     autolisi_pct: float,
-    variant_quantities: list,   # [{"variant_id": int, "count": int, "name": str, "toppings": [...]}]
+    variant_quantities: list,
     portion_denominator: int = 4,
 ) -> dict:
     dough = scale_dough(
@@ -150,6 +153,7 @@ def calc_party(
                 t.get("protein_per100"),
                 t.get("carbs_per100"),
                 t.get("fat_per100"),
+                t.get("fiber_per100"),
             )
             total_g = round(qty * count, 1)
             topping_details.append({
@@ -205,5 +209,4 @@ def calc_water_temp(
     ambient_temp: float,
     constant: float = 55.0,
 ) -> float:
-    """Formula from the 'temp' sheet: water_temp = constant - flour - bowl - ambient."""
     return round(constant - flour_temp - bowl_temp - ambient_temp, 1)

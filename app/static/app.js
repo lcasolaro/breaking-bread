@@ -45,7 +45,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'party') renderPartyRecipes();
-    if (btn.dataset.tab === 'varianti') renderVariantiTab();
+    if (btn.dataset.tab === 'menu') renderMenuTab();
   });
 });
 
@@ -66,16 +66,20 @@ function getRecipeEmoji(name) {
 
 let allRecipes = [];
 let allVariants = [];
+let allIngredients = [];
 let variantiSelectedRecipeId = null;
+let menuSubView = 'pizze';
 let editingRecipe = null;
+let toppingsCache = {};
 
 // ── Load data ─────────────────────────────────────────────────────────────────
 
 async function loadRecipes() {
   try {
-    [allRecipes, allVariants] = await Promise.all([
+    [allRecipes, allVariants, allIngredients] = await Promise.all([
       api('GET', '/api/recipes'),
       api('GET', '/api/variants'),
+      api('GET', '/api/ingredients'),
     ]);
     renderRecipeGrid();
   } catch (e) {
@@ -324,14 +328,14 @@ function recipeDetailsHTML(recipe) {
       <span class="prep-row-grams" data-calc="chiusura-yeast">—</span>
     </div>
     <div class="prep-row">
-      <span>Malto diastasico</span>
+      <span>Carbone vegetale</span>
       <span class="prep-row-pct-fixed" style="font-size:.72rem">7 g/kg</span>
-      <span class="prep-row-grams" data-calc="malto-g">—</span>
+      <span class="prep-row-grams" data-calc="carbone-g">—</span>
     </div>
     <div class="prep-row">
-      <span>Carbone vegetale</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="carbone" min="0" max="5" step="0.05" value="${recipe.carbone_pct ?? 0}">%</span>
-      <span class="prep-row-grams" data-calc="carbone-g">—</span>
+      <span>Malto diastasico <span style="font-size:.7rem; opacity:.65">(% biga+poolish)</span></span>
+      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="malto" min="0" max="5" step="0.05" value="${recipe.malto_pct ?? 0}">%</span>
+      <span class="prep-row-grams" data-calc="malto-g">—</span>
     </div>
     <div class="prep-row">
       <span>Olio</span>
@@ -363,49 +367,41 @@ function onParamChange(recipeId, recipe) {
   const poolish   = getMain('poolish');
   const autolisi  = getMain('autolisi');
 
-  // Correct formula: totalDough = pieces × weight; flour = totalDough / (1 + hydration/100); water = flour × hydration/100
   const totalDough = pieces * weight;
   const flour      = totalDough / (1 + hydration / 100);
   const waterTotal = flour * hydration / 100;
 
-  // BIGA
   const bigaAcqua   = getSec('biga-acqua') || 44;
   const bigaLievito = getSec('biga-lievito');
   const bigaF = flour * biga / 100;
   const bigaW = bigaF * bigaAcqua / 100;
   const bigaY = bigaF * bigaLievito / 100;
 
-  // POOLISH
   const poolishLiev = getSec('poolish-lievito');
   const poolishF = flour * poolish / 100;
   const poolishW = poolishF;
   const poolishY = poolishF * poolishLiev / 100;
 
-  // AUTOLISI — cap water so chiusura never goes negative
   const autolisiAcqua = getSec('autolisi-acqua') || hydration;
   const autolisiF     = flour * autolisi / 100;
   const availableW    = Math.max(0, waterTotal - bigaW - poolishW);
   const autolisiW     = Math.min(autolisiF * autolisiAcqua / 100, availableW);
 
-  // CHIUSURA
   const chiusuraF = Math.max(0, flour - bigaF - poolishF - autolisiF);
   const chiusuraW = Math.max(0, waterTotal - bigaW - poolishW - autolisiW);
 
   const chiusuraSale     = getSec('chiusura-sale');
-  const chiusuraTotalLiev= getSec('chiusura-lievito');  // % on total flour
-  const carbone          = getSec('carbone');
+  const chiusuraTotalLiev= getSec('chiusura-lievito');
+  const malto            = getSec('malto');
   const olio             = getSec('olio');
 
   const saltG        = flour * chiusuraSale / 100;
   const totalYeastG  = flour * chiusuraTotalLiev / 100;
   const chiusuraYeastG = Math.max(0, totalYeastG - bigaY - poolishY);
-  const maltoG       = flour / 1000 * 7;           // 7g per kg di farina totale
-  const carboneG     = flour * carbone / 100;
+  const carboneG     = flour / 1000 * 7;
+  const maltoG       = (bigaF + poolishF) * malto / 100;
   const olioG        = flour * olio / 100;
 
-  const totalImpasto = flour + waterTotal + saltG + totalYeastG + maltoG + carboneG + olioG;
-
-  // Summary bar (inside params-widget)
   const setW = (key, val) => { const el = widget.querySelector(`[data-calc="${key}"]`); if (el) el.textContent = fmtG(val); };
   setW('summary-total', totalDough);
   setW('summary-flour', flour);
@@ -413,7 +409,6 @@ function onParamChange(recipeId, recipe) {
 
   const set = (key, val) => { const el = prep.querySelector(`[data-calc="${key}"]`); if (el) el.textContent = fmtG(val); };
 
-  // Extra ingredients — collect per section
   let extrasChiusura = 0, extrasBiga = 0, extrasPoolish = 0, extrasAutolisi = 0;
   prep.querySelectorAll('[data-extra-idx]').forEach(inp => {
     const idx = inp.dataset.extraIdx;
@@ -473,7 +468,7 @@ function openNewRecipe() {
   document.getElementById('rf-autolisi-water').value = 0;
   document.getElementById('rf-salt').value = 2.5;
   document.getElementById('rf-yeast').value = 1.0;
-  document.getElementById('rf-carbone').value = 0;
+  document.getElementById('rf-malto').value = 0;
   document.getElementById('rf-olio').value = 0;
   document.getElementById('recipe-params-section').style.display = '';
   document.getElementById('extras-list').innerHTML = '';
@@ -501,7 +496,7 @@ async function openEditRecipe(recipeId) {
     document.getElementById('rf-autolisi-water').value = r.autolisi_water_pct ?? 0;
     document.getElementById('rf-salt').value = r.salt_pct;
     document.getElementById('rf-yeast').value = r.yeast_pct;
-    document.getElementById('rf-carbone').value = r.carbone_pct ?? 0;
+    document.getElementById('rf-malto').value = r.malto_pct ?? 0;
     document.getElementById('rf-olio').value = r.olio_pct ?? 0;
     document.getElementById('extras-list').innerHTML = (r.extra_ingredients || []).map(extraItemHTML).join('');
     document.getElementById('recipe-params-section').style.display = '';
@@ -562,8 +557,8 @@ async function saveRecipe() {
     biga_yeast_pct:      parseFloat(document.getElementById('rf-biga-yeast').value) || 0.5,
     poolish_yeast_pct:   parseFloat(document.getElementById('rf-poolish-yeast').value) || 0.1,
     autolisi_water_pct:  parseFloat(document.getElementById('rf-autolisi-water').value) || 0,
-    malto_pct: 0,
-    carbone_pct: parseFloat(document.getElementById('rf-carbone').value) || 0,
+    malto_pct: parseFloat(document.getElementById('rf-malto').value) || 0,
+    carbone_pct: 0,
     olio_pct:    parseFloat(document.getElementById('rf-olio').value) || 0,
     extra_ingredients: extras,
     sort_order: (id && editingRecipe) ? (editingRecipe.sort_order || 0) : allRecipes.length * 10,
@@ -619,14 +614,16 @@ function openAddVariant(recipeId) {
   document.getElementById('variant-id-field').value = '';
   document.getElementById('variant-recipe-id-field').value = recipeId;
   document.getElementById('vf-name').value = '';
+  document.getElementById('vf-description').value = '';
   openModal('modal-variant');
 }
 
-function openEditVariant(variantId, name, recipeId) {
-  document.getElementById('modal-variant-title').textContent = 'Rinomina Variante';
+function openEditVariant(variantId, name, description, recipeId) {
+  document.getElementById('modal-variant-title').textContent = 'Modifica Variante';
   document.getElementById('variant-id-field').value = variantId;
   document.getElementById('variant-recipe-id-field').value = recipeId;
   document.getElementById('vf-name').value = name;
+  document.getElementById('vf-description').value = description || '';
   openModal('modal-variant');
 }
 
@@ -634,16 +631,17 @@ async function saveVariant() {
   const id = document.getElementById('variant-id-field').value;
   const recipeId = parseInt(document.getElementById('variant-recipe-id-field').value);
   const name = document.getElementById('vf-name').value.trim();
+  const description = document.getElementById('vf-description').value.trim() || null;
   if (!name) { toast('Inserisci il nome della variante', 'error'); return; }
 
   try {
     if (id) {
-      await api('PUT', `/api/variants/${id}`, { name, sort_order: 0 });
+      await api('PUT', `/api/variants/${id}`, { name, description, sort_order: 0 });
     } else {
-      await api('POST', `/api/recipes/${recipeId}/variants`, { name, sort_order: 0 });
+      await api('POST', `/api/recipes/${recipeId}/variants`, { name, description, sort_order: 0 });
     }
     closeModal('modal-variant');
-    await refreshVariantiTab();
+    await refreshMenuTab();
     toast('Variante salvata!', 'success');
   } catch (e) {
     toast('Errore salvataggio variante', 'error');
@@ -654,7 +652,7 @@ async function deleteVariant(variantId) {
   if (!confirm('Eliminare questa variante e tutti i suoi condimenti?')) return;
   try {
     await api('DELETE', `/api/variants/${variantId}`);
-    await refreshVariantiTab();
+    await refreshMenuTab();
     toast('Variante eliminata');
   } catch (e) {
     toast('Errore eliminazione', 'error');
@@ -663,34 +661,122 @@ async function deleteVariant(variantId) {
 
 // ── Topping Modal ─────────────────────────────────────────────────────────────
 
+function buildIngredientOptions(selectedId = null) {
+  const opts = ['<option value="">— Personalizzato —</option>'];
+  allIngredients.forEach(ing => {
+    opts.push(`<option value="${ing.id}"${selectedId === ing.id ? ' selected' : ''}>${ing.name}</option>`);
+  });
+  return opts.join('');
+}
+
+function setNutritionReadonly(readonly) {
+  ['tf-kcal', 'tf-protein', 'tf-carbs', 'tf-fat', 'tf-fiber'].forEach(id => {
+    document.getElementById(id).readOnly = readonly;
+  });
+}
+
 function openAddTopping(variantId) {
-  document.getElementById('modal-topping-title').textContent = 'Aggiungi Condimento';
+  document.getElementById('modal-topping-title').textContent = 'Aggiungi Ingrediente';
   document.getElementById('topping-id-field').value = '';
   document.getElementById('topping-variant-id-field').value = variantId;
-  ['tf-name','tf-qty','tf-kcal','tf-protein','tf-carbs','tf-fat'].forEach(id => {
+  document.getElementById('tf-ingredient').innerHTML = buildIngredientOptions();
+  document.getElementById('tf-name').value = '';
+  document.getElementById('tf-qty').value = 0;
+  ['tf-kcal', 'tf-protein', 'tf-carbs', 'tf-fat', 'tf-fiber'].forEach(id => {
     document.getElementById(id).value = '';
   });
-  document.getElementById('tf-qty').value = 0;
+  document.getElementById('tf-name-group').style.display = '';
+  setNutritionReadonly(false);
+  updateToppingPreview();
   openModal('modal-topping');
 }
 
-function openEditTopping(toppingId, variantId) {
-  document.getElementById('modal-topping-title').textContent = 'Modifica Condimento';
-  document.getElementById('topping-id-field').value = toppingId;
-  document.getElementById('topping-variant-id-field').value = variantId;
+function openEditTopping(topping) {
+  document.getElementById('modal-topping-title').textContent = 'Modifica Ingrediente';
+  document.getElementById('topping-id-field').value = topping.id;
+  document.getElementById('topping-variant-id-field').value = topping.variant_id;
+  document.getElementById('tf-ingredient').innerHTML = buildIngredientOptions(topping.ingredient_id);
+  document.getElementById('tf-name').value = topping.name || '';
+  document.getElementById('tf-qty').value = topping.quantity_g || 0;
+  document.getElementById('tf-kcal').value = topping.kcal_per100 ?? '';
+  document.getElementById('tf-protein').value = topping.protein_per100 ?? '';
+  document.getElementById('tf-carbs').value = topping.carbs_per100 ?? '';
+  document.getElementById('tf-fat').value = topping.fat_per100 ?? '';
+  document.getElementById('tf-fiber').value = topping.fiber_per100 ?? '';
+  const isLinked = !!topping.ingredient_id;
+  document.getElementById('tf-name-group').style.display = isLinked ? 'none' : '';
+  setNutritionReadonly(isLinked);
+  updateToppingPreview();
   openModal('modal-topping');
+}
+
+document.getElementById('tf-ingredient').addEventListener('change', () => {
+  const ingredientId = parseInt(document.getElementById('tf-ingredient').value) || null;
+  const ing = ingredientId ? allIngredients.find(i => i.id === ingredientId) : null;
+  if (ing) {
+    document.getElementById('tf-name').value = ing.name;
+    document.getElementById('tf-kcal').value = ing.kcal_per100 ?? '';
+    document.getElementById('tf-protein').value = ing.protein_per100 ?? '';
+    document.getElementById('tf-carbs').value = ing.carbs_per100 ?? '';
+    document.getElementById('tf-fat').value = ing.fat_per100 ?? '';
+    document.getElementById('tf-fiber').value = ing.fiber_per100 ?? '';
+    document.getElementById('tf-name-group').style.display = 'none';
+    setNutritionReadonly(true);
+  } else {
+    document.getElementById('tf-name-group').style.display = '';
+    setNutritionReadonly(false);
+  }
+  updateToppingPreview();
+});
+
+['tf-qty', 'tf-kcal', 'tf-protein', 'tf-carbs', 'tf-fat', 'tf-fiber'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateToppingPreview);
+});
+
+function updateToppingPreview() {
+  const qty     = parseFloat(document.getElementById('tf-qty').value) || 0;
+  const kcal    = parseFloat(document.getElementById('tf-kcal').value) || 0;
+  const protein = parseFloat(document.getElementById('tf-protein').value) || 0;
+  const carbs   = parseFloat(document.getElementById('tf-carbs').value) || 0;
+  const fat     = parseFloat(document.getElementById('tf-fat').value) || 0;
+  const fiber   = parseFloat(document.getElementById('tf-fiber').value) || 0;
+
+  const preview  = document.getElementById('tf-preview');
+  const macrosEl = document.getElementById('tf-preview-macros');
+
+  if (qty > 0 && (kcal > 0 || protein > 0 || carbs > 0 || fat > 0)) {
+    const f = qty / 100;
+    macrosEl.innerHTML = `
+      <span class="macro-pill macro-kcal">${Math.round(kcal * f)} kcal</span>
+      <span class="macro-pill macro-protein">${(Math.round(protein * f * 10) / 10)}g prot.</span>
+      <span class="macro-pill macro-carbs">${(Math.round(carbs * f * 10) / 10)}g carb.</span>
+      <span class="macro-pill macro-fat">${(Math.round(fat * f * 10) / 10)}g grassi</span>
+      ${fiber > 0 ? `<span class="macro-pill macro-fiber">${(Math.round(fiber * f * 10) / 10)}g fibre</span>` : ''}`;
+    preview.style.display = '';
+  } else {
+    preview.style.display = 'none';
+  }
 }
 
 async function saveTopping() {
   const id = document.getElementById('topping-id-field').value;
   const variantId = parseInt(document.getElementById('topping-variant-id-field').value);
+  const ingredientId = parseInt(document.getElementById('tf-ingredient').value) || null;
+
+  let name = document.getElementById('tf-name').value.trim();
+  if (!name && ingredientId) {
+    name = allIngredients.find(i => i.id === ingredientId)?.name || '';
+  }
+
   const body = {
-    name: document.getElementById('tf-name').value.trim(),
+    name,
     quantity_g: parseFloat(document.getElementById('tf-qty').value) || 0,
-    kcal_per100: parseFloat(document.getElementById('tf-kcal').value) || null,
+    kcal_per100:    parseFloat(document.getElementById('tf-kcal').value)    || null,
     protein_per100: parseFloat(document.getElementById('tf-protein').value) || null,
-    carbs_per100: parseFloat(document.getElementById('tf-carbs').value) || null,
-    fat_per100: parseFloat(document.getElementById('tf-fat').value) || null,
+    carbs_per100:   parseFloat(document.getElementById('tf-carbs').value)   || null,
+    fat_per100:     parseFloat(document.getElementById('tf-fat').value)     || null,
+    fiber_per100:   parseFloat(document.getElementById('tf-fiber').value)   || null,
+    ingredient_id: ingredientId,
     sort_order: 0,
   };
   if (!body.name) { toast('Inserisci il nome del condimento', 'error'); return; }
@@ -702,7 +788,7 @@ async function saveTopping() {
       await api('POST', `/api/variants/${variantId}/toppings`, body);
     }
     closeModal('modal-topping');
-    await refreshVariantiTab();
+    await refreshMenuTab();
     toast('Condimento salvato!', 'success');
   } catch (e) {
     toast('Errore salvataggio condimento', 'error');
@@ -712,16 +798,19 @@ async function saveTopping() {
 async function deleteTopping(toppingId) {
   try {
     await api('DELETE', `/api/toppings/${toppingId}`);
-    await refreshVariantiTab();
+    await refreshMenuTab();
     toast('Condimento eliminato');
   } catch (e) {
     toast('Errore eliminazione', 'error');
   }
 }
 
-async function refreshVariantiTab() {
+async function refreshMenuTab() {
   allVariants = await api('GET', '/api/variants').catch(() => allVariants);
-  if (variantiSelectedRecipeId) {
+  if (menuSubView === 'ingredienti') {
+    allIngredients = await api('GET', '/api/ingredients').catch(() => allIngredients);
+    renderMenuIngredienti();
+  } else if (variantiSelectedRecipeId) {
     await renderVariantsForRecipe(variantiSelectedRecipeId);
   }
 }
@@ -766,7 +855,17 @@ async function triggerImport() {
   }
 }
 
-// ── Varianti Tab ──────────────────────────────────────────────────────────────
+// ── Menù Pizze Tab ────────────────────────────────────────────────────────────
+
+function renderMenuTab() {
+  if (menuSubView === 'ingredienti') {
+    renderMenuIngredienti();
+  } else {
+    renderVariantiTab();
+  }
+}
+
+// Sub-nav wiring (once, at bottom of file)
 
 function renderVariantiTab() {
   const selector = document.getElementById('varianti-recipe-selector');
@@ -803,6 +902,11 @@ async function renderVariantsForRecipe(recipeId) {
   content.innerHTML = `<div style="padding:20px; color:var(--text-3); font-size:.85rem">Caricamento...</div>`;
   try {
     const recipe = await api('GET', `/api/recipes/${recipeId}`);
+    // Populate toppings cache
+    recipe.variants.forEach(v => {
+      v.toppings.forEach(t => { toppingsCache[t.id] = t; });
+    });
+
     const variantsHTML = recipe.variants.length
       ? recipe.variants.map(v => variantHTML(v)).join('')
       : `<p style="color:var(--text-3); font-size:.85rem; padding:8px 0">Nessuna variante. Aggiungine una.</p>`;
@@ -821,43 +925,97 @@ async function renderVariantsForRecipe(recipeId) {
   }
 }
 
+function calcToppingMacros(t) {
+  const qty = t.quantity_g || 0;
+  const f = qty / 100;
+  return {
+    qty,
+    kcal:    t.kcal_per100    != null ? Math.round(t.kcal_per100    * f)            : null,
+    protein: t.protein_per100 != null ? Math.round(t.protein_per100 * f * 10) / 10 : null,
+    carbs:   t.carbs_per100   != null ? Math.round(t.carbs_per100   * f * 10) / 10 : null,
+    fat:     t.fat_per100     != null ? Math.round(t.fat_per100     * f * 10) / 10 : null,
+    fiber:   t.fiber_per100   != null ? Math.round(t.fiber_per100   * f * 10) / 10 : null,
+  };
+}
+
 function variantHTML(v) {
-  const toppings = v.toppings.length
-    ? `<table style="width:100%; border-collapse:collapse; font-size:.82rem; margin-top:6px">
+  const rows = v.toppings.map(t => ({ t, m: calcToppingMacros(t) }));
+  const hasNutrition = rows.some(({ m }) => m.kcal != null || m.protein != null);
+
+  const sumOf = key => {
+    const vals = rows.map(({ m }) => m[key]).filter(x => x != null);
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) * 10) / 10 : null;
+  };
+
+  const descHTML = v.description
+    ? `<p class="variant-desc">${v.description}</p>`
+    : '';
+
+  let tableHTML;
+  if (!v.toppings.length) {
+    tableHTML = `<p style="color:var(--text-3); font-size:.8rem; margin-top:6px">Nessun ingrediente. Aggiungine uno.</p>`;
+  } else {
+    const bodyRows = rows.map(({ t, m }, idx) => `
+      <tr data-topping-id="${t.id}">
+        <td>${t.name}</td>
+        <td class="num">${m.qty}</td>
+        <td class="num">${fmt(m.kcal)}</td>
+        <td class="num">${fmt(m.protein, 1)}</td>
+        <td class="num">${fmt(m.carbs, 1)}</td>
+        <td class="num">${fmt(m.fat, 1)}</td>
+        <td class="num">${fmt(m.fiber, 1)}</td>
+        <td class="td-actions">
+          <button class="btn-icon btn-move-up" data-id="${t.id}" title="Sposta su"${idx === 0 ? ' disabled' : ''} style="font-size:.65rem">↑</button>
+          <button class="btn-icon btn-move-down" data-id="${t.id}" title="Sposta giù"${idx === rows.length - 1 ? ' disabled' : ''} style="font-size:.65rem">↓</button>
+          <button class="btn-icon btn-edit-topping" data-id="${t.id}" title="Modifica" style="font-size:.7rem">✏️</button>
+          <button class="btn-icon btn-delete-topping" data-id="${t.id}" title="Elimina" style="font-size:.7rem">🗑️</button>
+        </td>
+      </tr>`).join('');
+
+    const totRow = hasNutrition ? `
+      <tr class="totale-row">
+        <td><strong>Totale pizza</strong></td>
+        <td></td>
+        <td class="num"><strong>${fmt(sumOf('kcal'))}</strong></td>
+        <td class="num"><strong>${fmt(sumOf('protein'), 1)}</strong></td>
+        <td class="num"><strong>${fmt(sumOf('carbs'), 1)}</strong></td>
+        <td class="num"><strong>${fmt(sumOf('fat'), 1)}</strong></td>
+        <td class="num"><strong>${fmt(sumOf('fiber'), 1)}</strong></td>
+        <td></td>
+      </tr>` : '';
+
+    tableHTML = `
+      <table class="macro-table">
         <thead><tr>
-          <th style="text-align:left; padding:4px 6px; color:var(--text-3); font-size:.7rem; border-bottom:1px solid var(--border)">Ingrediente</th>
-          <th style="text-align:right; padding:4px 6px; color:var(--text-3); font-size:.7rem; border-bottom:1px solid var(--border)">g/pizza</th>
-          <th style="text-align:right; padding:4px 6px; color:var(--text-3); font-size:.7rem; border-bottom:1px solid var(--border)">kcal/100g</th>
-          <th style="padding:4px 6px; border-bottom:1px solid var(--border)"></th>
+          <th>Ingrediente</th>
+          <th class="num">g</th>
+          <th class="num">kcal</th>
+          <th class="num">Prot.</th>
+          <th class="num">Carbs.</th>
+          <th class="num">Grassi</th>
+          <th class="num">Fibre</th>
+          <th></th>
         </tr></thead>
-        <tbody>
-          ${v.toppings.map(t => `
-            <tr>
-              <td style="padding:4px 6px">${t.name}</td>
-              <td style="text-align:right; padding:4px 6px">${fmtG(t.quantity_g)}</td>
-              <td style="text-align:right; padding:4px 6px; color:var(--text-3)">${t.kcal_per100 != null ? fmt(t.kcal_per100) : '—'}</td>
-              <td style="padding:4px 6px; text-align:right">
-                <button class="btn-icon btn-edit-topping" data-id="${t.id}" data-variant-id="${v.id}" style="font-size:.7rem" title="Modifica">✏️</button>
-                <button class="btn-icon btn-delete-topping" data-id="${t.id}" style="font-size:.7rem" title="Elimina">🗑️</button>
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`
-    : `<p style="color:var(--text-3); font-size:.8rem; margin-top:6px">Nessun condimento. Aggiungine uno.</p>`;
+        <tbody>${bodyRows}${totRow}</tbody>
+      </table>`;
+  }
 
   return `
 <div class="variant-item" data-variant-id="${v.id}">
   <button class="variant-toggle">
     <span>${v.name}</span>
     <div style="display:flex;gap:6px;align-items:center">
-      <button class="btn-ghost btn-sm btn-edit-variant" data-id="${v.id}" data-name="${v.name}" style="font-size:.7rem">Rinomina</button>
+      <button class="btn-ghost btn-sm btn-edit-variant" data-id="${v.id}" data-name="${v.name}" data-description="${(v.description || '').replace(/"/g,'&quot;')}" style="font-size:.7rem">Modifica</button>
+      <button class="btn-ghost btn-sm btn-copy-variant" data-id="${v.id}" data-name="${v.name}" style="font-size:.7rem">Copia pizza ↗</button>
+      <button class="btn-ghost btn-sm btn-copy-toppings" data-id="${v.id}" data-name="${v.name}" style="font-size:.7rem">Copia ingredienti →</button>
       <button class="btn-ghost btn-sm btn-delete-variant" data-id="${v.id}" style="font-size:.7rem; color:var(--red)">Elimina</button>
       <span>▾</span>
     </div>
   </button>
-  <div class="variant-body">
-    ${toppings}
-    <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-action="add-topping" data-variant-id="${v.id}">+ Aggiungi Condimento</button>
+  <div class="variant-body open">
+    ${descHTML}
+    ${tableHTML}
+    <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-action="add-topping" data-variant-id="${v.id}">+ Aggiungi Ingrediente</button>
   </div>
 </div>`;
 }
@@ -872,7 +1030,7 @@ function wireVariantButtons(container, recipeId) {
   container.querySelectorAll('.btn-edit-variant').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      openEditVariant(parseInt(btn.dataset.id), btn.dataset.name, recipeId);
+      openEditVariant(parseInt(btn.dataset.id), btn.dataset.name, btn.dataset.description, recipeId);
     });
   });
   container.querySelectorAll('.btn-delete-variant').forEach(btn => {
@@ -881,20 +1039,262 @@ function wireVariantButtons(container, recipeId) {
       deleteVariant(parseInt(btn.dataset.id));
     });
   });
+  container.querySelectorAll('.btn-copy-variant').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openCopyVariant(parseInt(btn.dataset.id), btn.dataset.name);
+    });
+  });
+  container.querySelectorAll('.btn-copy-toppings').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openCopyToppings(parseInt(btn.dataset.id), btn.dataset.name);
+    });
+  });
+  container.querySelectorAll('.btn-move-up').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      moveToppingInDir(parseInt(btn.dataset.id), -1);
+    });
+  });
+  container.querySelectorAll('.btn-move-down').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      moveToppingInDir(parseInt(btn.dataset.id), 1);
+    });
+  });
   container.querySelectorAll('.btn-edit-topping').forEach(btn => {
-    btn.addEventListener('click', () => openEditTopping(parseInt(btn.dataset.id), parseInt(btn.dataset.variantId)));
+    btn.addEventListener('click', () => openEditTopping(toppingsCache[parseInt(btn.dataset.id)]));
   });
   container.querySelectorAll('.btn-delete-topping').forEach(btn => {
     btn.addEventListener('click', () => deleteTopping(parseInt(btn.dataset.id)));
   });
 }
 
+// ── Sort toppings ─────────────────────────────────────────────────────────────
+
+async function moveToppingInDir(toppingId, dir) {
+  const row = document.querySelector(`tr[data-topping-id="${toppingId}"]`);
+  if (!row) return;
+  const tbody = row.closest('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr[data-topping-id]'));
+  const idx = rows.findIndex(r => parseInt(r.dataset.toppingId) === toppingId);
+  const swapIdx = idx + dir;
+  if (swapIdx < 0 || swapIdx >= rows.length) return;
+  const swapId = parseInt(rows[swapIdx].dataset.toppingId);
+  try {
+    await Promise.all([
+      api('PATCH', `/api/toppings/${toppingId}/sort`, { sort_order: swapIdx * 10 }),
+      api('PATCH', `/api/toppings/${swapId}/sort`, { sort_order: idx * 10 }),
+    ]);
+    renderVariantsForRecipe(variantiSelectedRecipeId);
+  } catch (e) {
+    toast('Errore ordinamento', 'error');
+  }
+}
+
+// ── Copy variant ──────────────────────────────────────────────────────────────
+
+function openCopyVariant(variantId, variantName) {
+  document.getElementById('copy-variant-source-id').value = variantId;
+  document.getElementById('copy-variant-desc').textContent = `Pizza: "${variantName}"`;
+  const others = allRecipes.filter(r => r.id !== variantiSelectedRecipeId);
+  document.getElementById('copy-variant-target-recipe').innerHTML =
+    others.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+  openModal('modal-copy-variant');
+}
+
+async function saveCopyVariant() {
+  const variantId = parseInt(document.getElementById('copy-variant-source-id').value);
+  const targetRecipeId = parseInt(document.getElementById('copy-variant-target-recipe').value);
+  try {
+    await api('POST', `/api/variants/${variantId}/copy`, { target_recipe_id: targetRecipeId });
+    closeModal('modal-copy-variant');
+    const targetName = allRecipes.find(r => r.id === targetRecipeId)?.name || 'ricetta';
+    toast(`Pizza copiata in "${targetName}"`);
+    await loadRecipes();
+    if (variantiSelectedRecipeId === targetRecipeId) renderVariantsForRecipe(targetRecipeId);
+  } catch (e) {
+    toast('Errore nella copia', 'error');
+  }
+}
+
+// ── Copy toppings ─────────────────────────────────────────────────────────────
+
+function openCopyToppings(variantId, variantName) {
+  document.getElementById('copy-toppings-source-id').value = variantId;
+  document.getElementById('copy-toppings-desc').textContent = `Copia ingredienti di: "${variantName}"`;
+  const opts = [];
+  allRecipes.forEach(r => {
+    const vars = allVariants.filter(v => v.recipe_id === r.id && v.id !== variantId);
+    if (vars.length) {
+      opts.push(`<optgroup label="${r.name}">`);
+      vars.forEach(v => opts.push(`<option value="${v.id}">${v.name}</option>`));
+      opts.push('</optgroup>');
+    }
+  });
+  document.getElementById('copy-toppings-target-variant').innerHTML = opts.join('');
+  openModal('modal-copy-toppings');
+}
+
+async function saveCopyToppings() {
+  const variantId = parseInt(document.getElementById('copy-toppings-source-id').value);
+  const targetVariantId = parseInt(document.getElementById('copy-toppings-target-variant').value);
+  try {
+    await api('POST', `/api/variants/${variantId}/copy-toppings`, { target_variant_id: targetVariantId });
+    closeModal('modal-copy-toppings');
+    const targetName = allVariants.find(v => v.id === targetVariantId)?.name || 'pizza';
+    toast(`Ingredienti copiati in "${targetName}"`);
+    renderVariantsForRecipe(variantiSelectedRecipeId);
+  } catch (e) {
+    toast('Errore nella copia ingredienti', 'error');
+  }
+}
+
+// ── Ingredient Library ────────────────────────────────────────────────────────
+
+function renderMenuIngredienti() {
+  const container = document.getElementById('menu-view-ingredienti');
+  const headerHTML = `
+    <div class="section-header" style="margin-bottom:16px">
+      <h2 style="font-size:1.05rem; font-weight:700;">Libreria Ingredienti</h2>
+      <button class="btn btn-primary btn-sm" id="btn-new-ingredient">+ Aggiungi Ingrediente</button>
+    </div>`;
+
+  if (!allIngredients.length) {
+    container.innerHTML = headerHTML + `<div class="empty-state"><p>Nessun ingrediente in libreria.</p></div>`;
+  } else {
+    const rows = allIngredients.map(ing => `
+      <tr>
+        <td>${ing.name}</td>
+        <td class="num">${ing.kcal_per100 != null ? fmt(ing.kcal_per100) : '—'}</td>
+        <td class="num">${ing.protein_per100 != null ? fmt(ing.protein_per100, 1) : '—'}</td>
+        <td class="num">${ing.carbs_per100 != null ? fmt(ing.carbs_per100, 1) : '—'}</td>
+        <td class="num">${ing.fat_per100 != null ? fmt(ing.fat_per100, 1) : '—'}</td>
+        <td class="num">${ing.fiber_per100 != null ? fmt(ing.fiber_per100, 1) : '—'}</td>
+        <td class="td-actions">
+          <button class="btn-icon btn-lookup-ingredient" data-id="${ing.id}" data-name="${ing.name}" title="Cerca valori su OpenFoodFacts">🔍</button>
+          <button class="btn-icon btn-edit-ingredient" data-id="${ing.id}" title="Modifica">✏️</button>
+          <button class="btn-icon btn-delete-ingredient" data-id="${ing.id}" title="Elimina">🗑️</button>
+        </td>
+      </tr>`).join('');
+
+    container.innerHTML = headerHTML + `
+      <table class="ingredient-table">
+        <thead><tr>
+          <th>Nome</th>
+          <th class="num">kcal/100g</th>
+          <th class="num">Prot. (g)</th>
+          <th class="num">Carbs. (g)</th>
+          <th class="num">Grassi (g)</th>
+          <th class="num">Fibre (g)</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  container.querySelector('#btn-new-ingredient')?.addEventListener('click', openNewIngredient);
+  container.querySelectorAll('.btn-lookup-ingredient').forEach(btn => {
+    btn.addEventListener('click', () => lookupIngredientNutrition(parseInt(btn.dataset.id), btn.dataset.name));
+  });
+  container.querySelectorAll('.btn-edit-ingredient').forEach(btn => {
+    btn.addEventListener('click', () => openEditIngredient(parseInt(btn.dataset.id)));
+  });
+  container.querySelectorAll('.btn-delete-ingredient').forEach(btn => {
+    btn.addEventListener('click', () => deleteIngredient(parseInt(btn.dataset.id)));
+  });
+}
+
+async function lookupIngredientNutrition(ingredientId, name) {
+  const btn = document.querySelector(`.btn-lookup-ingredient[data-id="${ingredientId}"]`);
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  try {
+    const result = await api('GET', `/api/lookup-nutrition?name=${encodeURIComponent(name)}`);
+    openEditIngredient(ingredientId);
+    document.getElementById('if-kcal').value    = result.kcal_per100;
+    document.getElementById('if-protein').value = result.protein_per100;
+    document.getElementById('if-carbs').value   = result.carbs_per100;
+    document.getElementById('if-fat').value     = result.fat_per100;
+    document.getElementById('if-fiber').value   = result.fiber_per100;
+    toast(`Trovato: "${result.source_name}" — verifica i valori e salva`, 'success');
+  } catch (e) {
+    toast('Nessun risultato su OpenFoodFacts', 'error');
+  } finally {
+    if (btn) { btn.textContent = '🔍'; btn.disabled = false; }
+  }
+}
+
+function openNewIngredient() {
+  document.getElementById('modal-ingredient-title').textContent = 'Aggiungi Ingrediente';
+  document.getElementById('ingredient-id-field').value = '';
+  document.getElementById('if-name').value = '';
+  ['if-kcal', 'if-protein', 'if-carbs', 'if-fat', 'if-fiber'].forEach(id => {
+    document.getElementById(id).value = 0;
+  });
+  openModal('modal-ingredient');
+}
+
+function openEditIngredient(ingredientId) {
+  const ing = allIngredients.find(i => i.id === ingredientId);
+  if (!ing) return;
+  document.getElementById('modal-ingredient-title').textContent = 'Modifica Ingrediente';
+  document.getElementById('ingredient-id-field').value = ing.id;
+  document.getElementById('if-name').value = ing.name;
+  document.getElementById('if-kcal').value = ing.kcal_per100 ?? 0;
+  document.getElementById('if-protein').value = ing.protein_per100 ?? 0;
+  document.getElementById('if-carbs').value = ing.carbs_per100 ?? 0;
+  document.getElementById('if-fat').value = ing.fat_per100 ?? 0;
+  document.getElementById('if-fiber').value = ing.fiber_per100 ?? 0;
+  openModal('modal-ingredient');
+}
+
+async function saveIngredient() {
+  const id = document.getElementById('ingredient-id-field').value;
+  const name = document.getElementById('if-name').value.trim();
+  if (!name) { toast("Inserisci il nome dell'ingrediente", 'error'); return; }
+
+  const body = {
+    name,
+    kcal_per100:    parseFloat(document.getElementById('if-kcal').value)    || 0,
+    protein_per100: parseFloat(document.getElementById('if-protein').value) || 0,
+    carbs_per100:   parseFloat(document.getElementById('if-carbs').value)   || 0,
+    fat_per100:     parseFloat(document.getElementById('if-fat').value)     || 0,
+    fiber_per100:   parseFloat(document.getElementById('if-fiber').value)   || 0,
+  };
+
+  try {
+    if (id) {
+      await api('PUT', `/api/ingredients/${id}`, body);
+    } else {
+      await api('POST', '/api/ingredients', body);
+    }
+    closeModal('modal-ingredient');
+    allIngredients = await api('GET', '/api/ingredients');
+    renderMenuIngredienti();
+    toast('Ingrediente salvato!', 'success');
+  } catch (e) {
+    toast('Errore salvataggio ingrediente', 'error');
+  }
+}
+
+async function deleteIngredient(id) {
+  if (!confirm('Eliminare questo ingrediente dalla libreria?')) return;
+  try {
+    await api('DELETE', `/api/ingredients/${id}`);
+    allIngredients = await api('GET', '/api/ingredients');
+    renderMenuIngredienti();
+    toast('Ingrediente eliminato');
+  } catch (e) {
+    toast('Errore eliminazione', 'error');
+  }
+}
+
 // ── Pizza Party ────────────────────────────────────────────────────────────────
 
-let partyRecipeId = null;
-let partyPortionDenom = 4;
+let partyState = {};
 let partyDebounceTimer = null;
-let composizioneRowId = 0;
+let partyRowCounter = 0;
 
 function renderPartyRecipes() {
   const container = document.getElementById('party-recipe-list');
@@ -902,54 +1302,50 @@ function renderPartyRecipes() {
     container.innerHTML = `<p style="color:var(--text-3);font-size:.85rem">Nessuna ricetta. Importa prima dall'Excel.</p>`;
     return;
   }
-  container.innerHTML = allRecipes.map(r => `
-    <label class="recipe-radio${partyRecipeId === r.id ? ' selected' : ''}">
-      <input type="radio" name="party-recipe" value="${r.id}" ${partyRecipeId === r.id ? 'checked' : ''}>
-      <div>
-        <div class="recipe-radio-label">${r.name}</div>
-        <div class="recipe-radio-meta">${r.hydration_pct}% idrat. · ${r.default_pieces}× ${r.default_ball_g}g</div>
-      </div>
-    </label>`).join('');
-
-  container.querySelectorAll('input[type=radio]').forEach(inp => {
-    inp.addEventListener('change', () => onPartyRecipeSelect(parseInt(inp.value)));
+  container.innerHTML = allRecipes.map(r => {
+    const active = !!partyState[r.id]?.active;
+    return `
+      <label class="recipe-checkbox-item${active ? ' selected' : ''}">
+        <input type="checkbox" name="party-recipe" value="${r.id}"${active ? ' checked' : ''}>
+        <div>
+          <div class="recipe-radio-label">${r.name}</div>
+          <div class="recipe-radio-meta">${r.hydration_pct}% idrat. · ${r.default_pieces}× ${r.default_ball_g}g</div>
+        </div>
+      </label>`;
+  }).join('');
+  container.querySelectorAll('input[type=checkbox]').forEach(inp => {
+    inp.addEventListener('change', () => onPartyRecipeToggle(parseInt(inp.value), inp.checked));
   });
-
-  if (!partyRecipeId && allRecipes.length) onPartyRecipeSelect(allRecipes[0].id);
 }
 
-function onPartyRecipeSelect(recipeId) {
-  partyRecipeId = recipeId;
-  document.querySelectorAll('.recipe-radio').forEach(el => el.classList.remove('selected'));
-  const radio = document.querySelector(`input[name=party-recipe][value="${recipeId}"]`);
-  if (radio) { radio.checked = true; radio.closest('.recipe-radio').classList.add('selected'); }
-
-  const recipe = allRecipes.find(r => r.id === recipeId);
-  if (recipe) {
-    document.getElementById('party-pieces').value = recipe.default_pieces;
-    document.getElementById('party-ball-weight').value = recipe.default_ball_g;
-    document.getElementById('party-hydration').value = recipe.hydration_pct;
-    document.getElementById('party-salt').value = recipe.salt_pct;
-    document.getElementById('party-yeast').value = recipe.yeast_pct;
-    document.getElementById('party-biga').value = recipe.biga_pct;
-    document.getElementById('party-poolish').value = recipe.poolish_pct;
-    document.getElementById('party-autolisi').value = recipe.autolisi_pct;
-  }
-
-  initComposizioneForRecipe(recipeId);
-  schedulePartyCalc();
-}
-
-function initComposizioneForRecipe(recipeId) {
-  const container = document.getElementById('party-composizione-rows');
-  container.innerHTML = '';
-  composizioneRowId = 0;
-  const recipeVariants = allVariants.filter(v => v.recipe_id === recipeId);
-  if (recipeVariants.length) {
-    recipeVariants.forEach(v => addComposizioneRow(v.id));
+function onPartyRecipeToggle(recipeId, checked) {
+  const label = document.querySelector(`input[name=party-recipe][value="${recipeId}"]`)?.closest('.recipe-checkbox-item');
+  if (label) label.classList.toggle('selected', checked);
+  if (checked) {
+    const recipe = allRecipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    if (!partyState[recipeId]) {
+      partyState[recipeId] = {
+        active: true,
+        pieces: recipe.default_pieces, ball_weight: recipe.default_ball_g,
+        hydration: recipe.hydration_pct, salt: recipe.salt_pct,
+        yeast: recipe.yeast_pct, biga: recipe.biga_pct,
+        poolish: recipe.poolish_pct, autolisi: recipe.autolisi_pct,
+        portion_denominator: 4,
+        variant_rows: [],
+      };
+      const recipeVariants = allVariants.filter(v => v.recipe_id === recipeId);
+      (recipeVariants.length ? recipeVariants : [null]).forEach(v => {
+        partyState[recipeId].variant_rows.push({ row_id: ++partyRowCounter, variant_id: v?.id || null, count: 0 });
+      });
+    } else {
+      partyState[recipeId].active = true;
+    }
   } else {
-    addComposizioneRow();
+    if (partyState[recipeId]) partyState[recipeId].active = false;
   }
+  renderPartyRecipeCards();
+  schedulePartyCalc();
 }
 
 function buildVariantOptions(selectedId = null) {
@@ -966,48 +1362,151 @@ function buildVariantOptions(selectedId = null) {
       </optgroup>`).join('');
 }
 
-function addComposizioneRow(preselectedVariantId = null) {
-  const rowId = ++composizioneRowId;
-  const container = document.getElementById('party-composizione-rows');
-  const div = document.createElement('div');
-  div.className = 'composizione-row';
-  div.dataset.rowId = rowId;
-  div.innerHTML = `
-    <select data-row-id="${rowId}">${buildVariantOptions(preselectedVariantId)}</select>
-    <div class="counter-cell">
-      <button class="counter-btn" data-action="dec">−</button>
-      <span class="counter-val" id="crow-${rowId}">0</span>
-      <button class="counter-btn" data-action="inc">+</button>
-    </div>
-    <button class="btn-remove" title="Rimuovi">✕</button>`;
+function renderPartyRecipeCards() {
+  const container = document.getElementById('party-recipe-cards');
+  container.querySelectorAll('.party-recipe-card').forEach(card => {
+    const rid = parseInt(card.dataset.recipeId);
+    if (!partyState[rid]?.active) card.remove();
+  });
+  allRecipes.forEach(recipe => {
+    const state = partyState[recipe.id];
+    if (!state?.active) return;
+    if (container.querySelector(`.party-recipe-card[data-recipe-id="${recipe.id}"]`)) return;
+    const card = buildPartyRecipeCard(recipe, state);
+    container.appendChild(card);
+    wirePartyRecipeCard(card, recipe.id);
+  });
+}
 
-  div.querySelector('select').addEventListener('change', () => { updatePieceWarning(); schedulePartyCalc(); });
-  div.querySelector('.btn-remove').addEventListener('click', () => { div.remove(); updatePieceWarning(); schedulePartyCalc(); });
-  div.querySelectorAll('.counter-btn').forEach(btn => {
+function buildPartyRecipeCard(recipe, state) {
+  const div = document.createElement('div');
+  div.className = 'party-step party-recipe-card';
+  div.dataset.recipeId = recipe.id;
+  const composizioneHTML = state.variant_rows.map(row => `
+    <div class="composizione-row" data-row-id="${row.row_id}">
+      <select data-row-id="${row.row_id}">${buildVariantOptions(row.variant_id)}</select>
+      <div class="counter-cell">
+        <button class="counter-btn" data-action="dec">−</button>
+        <span class="counter-val" id="crow-${row.row_id}">${row.count}</span>
+        <button class="counter-btn" data-action="inc">+</button>
+      </div>
+      <button class="btn-remove" title="Rimuovi">✕</button>
+    </div>`).join('');
+  div.innerHTML = `
+    <div class="party-step-header party-recipe-card-header">
+      <div>
+        <div class="party-recipe-card-name">${getRecipeEmoji(recipe.name)} ${recipe.name}</div>
+        <div class="recipe-radio-meta" style="font-size:.75rem; color:var(--text-3); margin-top:2px">Step 2 — Parametri</div>
+      </div>
+    </div>
+    <div class="party-step-body party-recipe-card-body">
+      <div>
+        <div class="party-recipe-section-label">Impasto</div>
+        <div class="params-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="param-field"><label>N. Palline</label><input type="number" class="party-param" data-param="pieces" min="1" value="${state.pieces}"></div>
+          <div class="param-field"><label>Peso (g)</label><input type="number" class="party-param" data-param="ball_weight" min="50" step="5" value="${state.ball_weight}"></div>
+          <div class="param-field"><label>Idratazione (%)</label><input type="number" class="party-param" data-param="hydration" min="50" max="100" step="1" value="${state.hydration}"></div>
+          <div class="param-field"><label>Sale (%)</label><input type="number" class="party-param" data-param="salt" min="0" max="5" step="0.1" value="${state.salt}"></div>
+          <div class="param-field"><label>Lievito (%)</label><input type="number" class="party-param" data-param="yeast" min="0" max="5" step="0.01" value="${state.yeast}"></div>
+          <div class="param-field"><label>BIGA (%)</label><input type="number" class="party-param" data-param="biga" min="0" max="100" step="5" value="${state.biga}"></div>
+          <div class="param-field"><label>POOLISH (%)</label><input type="number" class="party-param" data-param="poolish" min="0" max="100" step="5" value="${state.poolish}"></div>
+          <div class="param-field"><label>AUTOLISI (%)</label><input type="number" class="party-param" data-param="autolisi" min="0" max="100" step="5" value="${state.autolisi}"></div>
+        </div>
+        <div class="piece-warning" id="party-warn-${recipe.id}" style="display:none"></div>
+      </div>
+      <div>
+        <div class="party-recipe-section-label">Composizione Pizze</div>
+        <div class="party-composizione-rows" data-recipe-id="${recipe.id}">${composizioneHTML}</div>
+        <button class="btn btn-ghost btn-sm btn-add-row" data-recipe-id="${recipe.id}" style="margin-top:8px">+ Aggiungi Variante</button>
+      </div>
+      <div>
+        <div class="party-recipe-section-label">Dimensione Porzione</div>
+        <div class="portion-grid party-portion-grid" data-recipe-id="${recipe.id}">
+          ${[2,3,4,6,8].map(v => `<button class="portion-btn${state.portion_denominator === v ? ' active' : ''}" data-val="${v}">1/${v} pizza</button>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  return div;
+}
+
+function wirePartyRecipeCard(card, recipeId) {
+  const state = partyState[recipeId];
+  card.querySelectorAll('.party-param').forEach(inp => {
+    inp.addEventListener('input', () => {
+      state[inp.dataset.param] = parseFloat(inp.value) || 0;
+      updatePartyPieceWarning(recipeId);
+      schedulePartyCalc();
+    });
+  });
+  card.querySelector('.party-portion-grid').addEventListener('click', e => {
+    const btn = e.target.closest('.portion-btn');
+    if (!btn) return;
+    card.querySelectorAll('.party-portion-grid .portion-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.portion_denominator = parseInt(btn.dataset.val);
+    schedulePartyCalc();
+  });
+  card.querySelectorAll('.composizione-row').forEach(row => wireComposizioneRow(row, recipeId));
+  card.querySelector('.btn-add-row').addEventListener('click', () => {
+    const rowId = ++partyRowCounter;
+    state.variant_rows.push({ row_id: rowId, variant_id: null, count: 0 });
+    const rowsContainer = card.querySelector('.party-composizione-rows');
+    const div = document.createElement('div');
+    div.className = 'composizione-row';
+    div.dataset.rowId = rowId;
+    div.innerHTML = `
+      <select data-row-id="${rowId}">${buildVariantOptions(null)}</select>
+      <div class="counter-cell">
+        <button class="counter-btn" data-action="dec">−</button>
+        <span class="counter-val" id="crow-${rowId}">0</span>
+        <button class="counter-btn" data-action="inc">+</button>
+      </div>
+      <button class="btn-remove" title="Rimuovi">✕</button>`;
+    rowsContainer.appendChild(div);
+    wireComposizioneRow(div, recipeId);
+    schedulePartyCalc();
+  });
+}
+
+function wireComposizioneRow(row, recipeId) {
+  const state = partyState[recipeId];
+  const rowId = parseInt(row.dataset.rowId);
+  row.querySelector('select').addEventListener('change', e => {
+    const sr = state.variant_rows.find(r => r.row_id === rowId);
+    if (sr) sr.variant_id = parseInt(e.target.value) || null;
+    updatePartyPieceWarning(recipeId);
+    schedulePartyCalc();
+  });
+  row.querySelectorAll('.counter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const el = document.getElementById('crow-' + rowId);
       let val = parseInt(el.textContent) || 0;
       if (btn.dataset.action === 'inc') val++;
       else if (val > 0) val--;
       el.textContent = val;
-      updatePieceWarning();
+      const sr = state.variant_rows.find(r => r.row_id === rowId);
+      if (sr) sr.count = val;
+      updatePartyPieceWarning(recipeId);
       schedulePartyCalc();
     });
   });
-
-  container.appendChild(div);
+  row.querySelector('.btn-remove').addEventListener('click', () => {
+    state.variant_rows = state.variant_rows.filter(r => r.row_id !== rowId);
+    row.remove();
+    updatePartyPieceWarning(recipeId);
+    schedulePartyCalc();
+  });
 }
 
-function updatePieceWarning() {
-  const totalPieces = parseInt(document.getElementById('party-pieces').value) || 0;
-  let assigned = 0;
-  document.querySelectorAll('#party-composizione-rows .counter-val').forEach(el => {
-    assigned += parseInt(el.textContent) || 0;
-  });
-  const warning = document.getElementById('party-piece-warning');
-  const show = assigned > 0 && assigned !== totalPieces;
+function updatePartyPieceWarning(recipeId) {
+  const state = partyState[recipeId];
+  if (!state) return;
+  const assigned = state.variant_rows.reduce((s, r) => s + (r.count || 0), 0);
+  const warning = document.getElementById(`party-warn-${recipeId}`);
+  if (!warning) return;
+  const show = assigned > 0 && assigned !== (state.pieces || 0);
   warning.style.display = show ? 'block' : 'none';
-  if (show) warning.textContent = `Totale assegnato: ${assigned} su ${totalPieces} palline`;
+  if (show) warning.textContent = `Totale assegnato: ${assigned} su ${state.pieces} palline`;
 }
 
 function schedulePartyCalc() {
@@ -1016,163 +1515,138 @@ function schedulePartyCalc() {
 }
 
 async function calcParty() {
-  if (!partyRecipeId) return;
-
-  const variantQuantities = [];
-  document.querySelectorAll('#party-composizione-rows .composizione-row').forEach(row => {
-    const variantId = parseInt(row.querySelector('select')?.value);
-    const count = parseInt(row.querySelector('.counter-val')?.textContent) || 0;
-    if (variantId && count > 0) variantQuantities.push({ variant_id: variantId, count });
-  });
-
-  const body = {
-    recipe_id: partyRecipeId,
-    target_pieces: parseInt(document.getElementById('party-pieces').value) || 6,
-    ball_weight_g: parseFloat(document.getElementById('party-ball-weight').value) || null,
-    hydration_pct: parseFloat(document.getElementById('party-hydration').value),
-    salt_pct: parseFloat(document.getElementById('party-salt').value),
-    yeast_pct: parseFloat(document.getElementById('party-yeast').value) || 0,
-    biga_pct: parseFloat(document.getElementById('party-biga').value) || 0,
-    poolish_pct: parseFloat(document.getElementById('party-poolish').value) || 0,
-    autolisi_pct: parseFloat(document.getElementById('party-autolisi').value) || 0,
-    variant_quantities: variantQuantities,
-    portion_denominator: partyPortionDenom,
-  };
-
-  try {
-    const result = await api('POST', '/api/pizza-party', body);
-    renderPartyResults(result);
-  } catch (e) {
-    document.getElementById('results-empty').style.display = 'none';
-    document.getElementById('results-content').style.display = '';
-    document.getElementById('results-content').innerHTML =
-      `<div style="padding:16px; color:var(--red); font-size:.85rem">Errore calcolo: ${e.message}</div>`;
+  const activeRecipes = allRecipes.filter(r => partyState[r.id]?.active);
+  if (!activeRecipes.length) {
+    document.getElementById('results-empty').style.display = '';
+    document.getElementById('results-content').style.display = 'none';
+    return;
   }
+  const requests = activeRecipes.map(recipe => {
+    const state = partyState[recipe.id];
+    const variantQuantities = state.variant_rows
+      .filter(row => row.variant_id && row.count > 0)
+      .map(row => ({ variant_id: row.variant_id, count: row.count }));
+    return api('POST', '/api/pizza-party', {
+      recipe_id: recipe.id,
+      target_pieces: state.pieces || 1,
+      ball_weight_g: state.ball_weight || null,
+      hydration_pct: state.hydration,
+      salt_pct: state.salt,
+      yeast_pct: state.yeast || 0,
+      biga_pct: state.biga || 0,
+      poolish_pct: state.poolish || 0,
+      autolisi_pct: state.autolisi || 0,
+      variant_quantities: variantQuantities,
+      portion_denominator: state.portion_denominator || 4,
+    }).then(result => ({ recipe, result })).catch(err => ({ recipe, error: err.message }));
+  });
+  const outcomes = await Promise.all(requests);
+  renderPartyResults(outcomes);
 }
 
-function renderPartyResults(result) {
-  const empty = document.getElementById('results-empty');
+function partyVariantCardHTML(v, portionDenom = 4) {
+  const hasMacros = v.toppings.some(t => t.macros_per_pizza.kcal > 0);
+  let tableHTML;
+  if (!v.toppings.length) {
+    tableHTML = `<p style="color:var(--text-3);font-size:.8rem">Nessun condimento</p>`;
+  } else {
+    const bodyRows = v.toppings.map(t => {
+      const m = t.macros_per_pizza;
+      return `<tr>
+        <td>${t.name}</td>
+        <td class="num">${fmtG(t.quantity_g_per_pizza)}</td>
+        ${hasMacros ? `<td class="num">${fmt(m.kcal)}</td><td class="num">${fmt(m.protein_g,1)}</td><td class="num">${fmt(m.carbs_g,1)}</td><td class="num">${fmt(m.fat_g,1)}</td><td class="num">${fmt(m.fiber_g,1)}</td>` : ''}
+      </tr>`;
+    }).join('');
+    const tot = v.per_pizza_macros;
+    const totRow = hasMacros ? `<tr class="totale-row"><td><strong>Totale</strong></td><td></td><td class="num"><strong>${fmt(tot.kcal)}</strong></td><td class="num"><strong>${fmt(tot.protein_g,1)}</strong></td><td class="num"><strong>${fmt(tot.carbs_g,1)}</strong></td><td class="num"><strong>${fmt(tot.fat_g,1)}</strong></td><td class="num"><strong>${fmt(tot.fiber_g,1)}</strong></td></tr>` : '';
+    const p = v.per_portion_macros;
+    const portRow = hasMacros ? `<tr style="color:var(--text-3);font-size:.78rem"><td>1/${portionDenom} pizza</td><td></td><td class="num">${fmt(p.kcal)}</td><td class="num">${fmt(p.protein_g,1)}</td><td class="num">${fmt(p.carbs_g,1)}</td><td class="num">${fmt(p.fat_g,1)}</td><td class="num">${fmt(p.fiber_g,1)}</td></tr>` : '';
+    tableHTML = `<table class="macro-table" style="font-size:.78rem"><thead><tr><th>Ingrediente</th><th class="num">g/pizza</th>${hasMacros ? '<th class="num">kcal</th><th class="num">Prot.</th><th class="num">Carbs.</th><th class="num">Grassi</th><th class="num">Fibre</th>' : ''}</tr></thead><tbody>${bodyRows}${totRow}${portRow}</tbody></table>`;
+  }
+  return `<div class="variant-result-card"><div class="variant-result-header"><span>${v.name}</span><span style="color:var(--text-3);font-size:.78rem;font-weight:400">${v.count} pizza${v.count>1?'e':''}</span></div><div class="variant-result-body">${tableHTML}</div></div>`;
+}
+
+function doughTableHTML(d) {
+  const prefHTML = [
+    d.biga_flour_g > 0     ? `<tr class="prefermento"><td>↳ BIGA farina</td><td class="num">${fmtG(d.biga_flour_g)}</td></tr>` : '',
+    d.poolish_flour_g > 0  ? `<tr class="prefermento"><td>↳ POOLISH farina</td><td class="num">${fmtG(d.poolish_flour_g)}</td></tr>` : '',
+    d.autolisi_flour_g > 0 ? `<tr class="prefermento"><td>↳ AUTOLISI farina</td><td class="num">${fmtG(d.autolisi_flour_g)}</td></tr>` : '',
+  ].join('');
+  const extrasHTML = (d.extra_ingredients || []).map(e => `<tr><td>${e.name}</td><td class="num">${fmtG(e.grams)}</td></tr>`).join('');
+  return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><tbody>
+    <tr><td>Farina</td><td class="num">${fmtG(d.flour_g)}</td></tr>
+    <tr><td>Acqua</td><td class="num">${fmtG(d.water_g)}</td></tr>
+    <tr><td>Sale</td><td class="num">${fmtG(d.salt_g)}</td></tr>
+    ${d.yeast_g > 0 ? `<tr><td>Lievito</td><td class="num">${fmtG(d.yeast_g)}</td></tr>` : ''}
+    ${prefHTML}${extrasHTML}
+    <tr class="total-row"><td>Totale Impasto</td><td class="num">${fmtG(d.total_dough_g)}</td></tr>
+    <tr style="color:var(--text-3);font-size:.8rem"><td>${d.actual_pieces} palline × ${fmtG(d.actual_ball_g)}</td><td></td></tr>
+  </tbody></table>`;
+}
+
+function renderPartyResults(outcomes) {
+  const empty   = document.getElementById('results-empty');
   const content = document.getElementById('results-content');
   empty.style.display = 'none';
   content.style.display = '';
 
-  const d = result.dough;
-  const prefHTML = [
-    d.biga_flour_g > 0    ? `<tr class="prefermento"><td>↳ BIGA farina</td><td class="num">${fmtG(d.biga_flour_g)}</td></tr>` : '',
-    d.poolish_flour_g > 0 ? `<tr class="prefermento"><td>↳ POOLISH farina</td><td class="num">${fmtG(d.poolish_flour_g)}</td></tr>` : '',
-    d.autolisi_flour_g > 0? `<tr class="prefermento"><td>↳ AUTOLISI farina</td><td class="num">${fmtG(d.autolisi_flour_g)}</td></tr>` : '',
-  ].join('');
+  // Combined shopping list
+  const shoppingTotals = {};
+  outcomes.forEach(({ result }) => {
+    if (!result) return;
+    (result.shopping_list || []).forEach(s => {
+      shoppingTotals[s.name] = (shoppingTotals[s.name] || 0) + s.total_g;
+    });
+  });
+  const combined = Object.entries(shoppingTotals).sort((a, b) => b[1] - a[1]);
+  const shoppingHTML = combined.length
+    ? combined.map(([name, g]) => `<div class="shopping-item"><span>${name}</span><span class="shopping-weight">${fmtG(Math.round(g * 10) / 10)}</span></div>`).join('')
+    : `<p style="color:var(--text-3);font-size:.82rem">Nessun condimento con quantità.</p>`;
 
-  const extrasHTML = (d.extra_ingredients || []).map(e =>
-    `<tr><td>${e.name}</td><td class="num">${fmtG(e.grams)}</td></tr>`
-  ).join('');
-
-  const variantsHTML = result.variants
-    .filter(v => v.count > 0)
-    .map(v => {
-      const toppingRows = v.toppings.map(t => `
-        <tr>
-          <td>${t.name}</td>
-          <td class="num">${fmtG(t.quantity_g_per_pizza)}</td>
-          <td class="num">${fmtG(t.total_g)}</td>
-        </tr>`).join('');
-      const hasMacros = v.per_pizza_macros.kcal > 0;
-      return `
-        <div class="variant-result-card">
-          <div class="variant-result-header">
-            <span>${v.name}</span>
-            <span style="color:var(--text-3); font-size:.78rem; font-weight:400">${v.count} pizza${v.count > 1 ? 'e' : ''}</span>
-          </div>
-          <div class="variant-result-body">
-            ${toppingRows ? `
-              <div class="variant-result-subtitle">Condimenti</div>
-              <table style="width:100%; border-collapse:collapse; font-size:.82rem">
-                <thead><tr>
-                  <th style="text-align:left; padding:3px 4px; color:var(--text-3); font-size:.7rem; border-bottom:1px solid var(--border)">Ingrediente</th>
-                  <th style="text-align:right; padding:3px 4px; color:var(--text-3); font-size:.7rem; border-bottom:1px solid var(--border)">g/pizza</th>
-                  <th style="text-align:right; padding:3px 4px; color:var(--text-3); font-size:.7rem; border-bottom:1px solid var(--border)">Totale</th>
-                </tr></thead>
-                <tbody>${toppingRows}</tbody>
-              </table>` : '<p style="color:var(--text-3);font-size:.8rem">Nessun condimento</p>'}
-            ${hasMacros ? `
-              <div class="variant-result-subtitle">Macro per pizza</div>
-              <div class="macro-row">
-                <span class="macro-pill macro-kcal">${fmt(v.per_pizza_macros.kcal)} kcal</span>
-                <span class="macro-pill macro-protein">${fmt(v.per_pizza_macros.protein_g, 1)}g prot.</span>
-                <span class="macro-pill macro-carbs">${fmt(v.per_pizza_macros.carbs_g, 1)}g carb.</span>
-                <span class="macro-pill macro-fat">${fmt(v.per_pizza_macros.fat_g, 1)}g grassi</span>
-              </div>
-              <div class="variant-result-subtitle">Per porzione (1/${partyPortionDenom})</div>
-              <div class="macro-row">
-                <span class="macro-pill macro-kcal">${fmt(v.per_portion_macros.kcal)} kcal</span>
-                <span class="macro-pill macro-protein">${fmt(v.per_portion_macros.protein_g, 1)}g prot.</span>
-                <span class="macro-pill macro-carbs">${fmt(v.per_portion_macros.carbs_g, 1)}g carb.</span>
-                <span class="macro-pill macro-fat">${fmt(v.per_portion_macros.fat_g, 1)}g grassi</span>
-              </div>` : ''}
-          </div>
-        </div>`;
-    }).join('') || `<p style="color:var(--text-3); font-size:.85rem; padding:8px 0">Nessuna variante con pizze assegnate.</p>`;
-
-  const shoppingHTML = result.shopping_list.length
-    ? result.shopping_list.map(s => `
-        <div class="shopping-item">
-          <span>${s.name}</span>
-          <span class="shopping-weight">${fmtG(s.total_g)}</span>
-        </div>`).join('')
-    : `<p style="color:var(--text-3); font-size:.82rem">Nessun condimento con quantità.</p>`;
+  // Per-recipe sections
+  const recipeSections = outcomes.map(({ recipe, result, error }) => {
+    if (error) return `<div class="results-section"><div class="results-section-title">${getRecipeEmoji(recipe.name)} ${recipe.name}</div><div class="results-section-body" style="color:var(--red);font-size:.85rem">Errore: ${error}</div></div>`;
+    const portionDenom = partyState[recipe.id]?.portion_denominator || 4;
+    const variantsHTML = result.variants.filter(v => v.count > 0).map(v => partyVariantCardHTML(v, portionDenom)).join('') ||
+      `<p style="color:var(--text-3);font-size:.85rem;padding:8px 0">Nessuna variante assegnata.</p>`;
+    return `
+      <div class="results-section">
+        <div class="results-section-title">${getRecipeEmoji(recipe.name)} ${recipe.name} — Impasto</div>
+        <div class="results-section-body" style="padding-bottom:8px">${doughTableHTML(result.dough)}</div>
+      </div>
+      <div class="results-section">
+        <div class="results-section-title">${getRecipeEmoji(recipe.name)} ${recipe.name} — Pizze</div>
+        <div class="results-section-body">${variantsHTML}</div>
+      </div>`;
+  }).join('');
 
   content.innerHTML = `
     <div class="results-section">
-      <div class="results-section-title">Impasto</div>
-      <div class="results-section-body" style="padding-bottom:8px">
-        <table style="width:100%; border-collapse:collapse; font-size:.85rem">
-          <tbody>
-            <tr><td>Farina</td><td class="num">${fmtG(d.flour_g)}</td></tr>
-            <tr><td>Acqua</td><td class="num">${fmtG(d.water_g)}</td></tr>
-            <tr><td>Sale</td><td class="num">${fmtG(d.salt_g)}</td></tr>
-            ${d.yeast_g > 0 ? `<tr><td>Lievito</td><td class="num">${fmtG(d.yeast_g)}</td></tr>` : ''}
-            ${prefHTML}
-            ${extrasHTML}
-            <tr class="total-row"><td>Totale Impasto</td><td class="num">${fmtG(d.total_dough_g)}</td></tr>
-            <tr style="color:var(--text-3); font-size:.8rem">
-              <td>${d.actual_pieces} palline × ${fmtG(d.actual_ball_g)}</td><td></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <div class="results-section">
-      <div class="results-section-title">Per Variante</div>
-      <div class="results-section-body">${variantsHTML}</div>
-    </div>
-    <div class="results-section">
       <div class="results-section-title">Lista Spesa Condimenti</div>
       <div class="results-section-body">${shoppingHTML}</div>
-    </div>`;
+    </div>
+    ${recipeSections}`;
 }
 
-// ── Portion selector ──────────────────────────────────────────────────────────
+// ── Menu sub-nav ──────────────────────────────────────────────────────────────
 
-document.getElementById('portion-grid').addEventListener('click', e => {
-  const btn = e.target.closest('.portion-btn');
-  if (!btn) return;
-  document.querySelectorAll('.portion-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  partyPortionDenom = parseInt(btn.dataset.val);
-  schedulePartyCalc();
-});
-
-// ── Wire party param inputs ───────────────────────────────────────────────────
-
-['party-pieces','party-ball-weight','party-hydration','party-salt','party-yeast',
- 'party-biga','party-poolish','party-autolisi'].forEach(id => {
-  document.getElementById(id).addEventListener('input', () => {
-    updatePieceWarning();
-    schedulePartyCalc();
+document.querySelectorAll('.subnav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.subnav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    menuSubView = btn.dataset.view;
+    if (menuSubView === 'pizze') {
+      document.getElementById('menu-view-pizze').style.display = '';
+      document.getElementById('menu-view-ingredienti').style.display = 'none';
+      renderVariantiTab();
+    } else {
+      document.getElementById('menu-view-pizze').style.display = 'none';
+      document.getElementById('menu-view-ingredienti').style.display = '';
+      renderMenuIngredienti();
+    }
   });
 });
-
-document.getElementById('btn-add-composizione-row').addEventListener('click', () => addComposizioneRow());
 
 // ── Global button wires ───────────────────────────────────────────────────────
 
@@ -1190,6 +1664,18 @@ document.getElementById('btn-variant-save').addEventListener('click',    saveVar
 document.getElementById('modal-topping-close').addEventListener('click', () => closeModal('modal-topping'));
 document.getElementById('btn-topping-cancel').addEventListener('click',  () => closeModal('modal-topping'));
 document.getElementById('btn-topping-save').addEventListener('click',    saveTopping);
+
+document.getElementById('modal-ingredient-close').addEventListener('click', () => closeModal('modal-ingredient'));
+document.getElementById('btn-ingredient-cancel').addEventListener('click',  () => closeModal('modal-ingredient'));
+document.getElementById('btn-ingredient-save').addEventListener('click',    saveIngredient);
+
+document.getElementById('modal-copy-variant-close').addEventListener('click',  () => closeModal('modal-copy-variant'));
+document.getElementById('btn-copy-variant-cancel').addEventListener('click',   () => closeModal('modal-copy-variant'));
+document.getElementById('btn-copy-variant-save').addEventListener('click',     saveCopyVariant);
+
+document.getElementById('modal-copy-toppings-close').addEventListener('click', () => closeModal('modal-copy-toppings'));
+document.getElementById('btn-copy-toppings-cancel').addEventListener('click',  () => closeModal('modal-copy-toppings'));
+document.getElementById('btn-copy-toppings-save').addEventListener('click',    saveCopyToppings);
 
 document.getElementById('modal-import-close').addEventListener('click', () => closeModal('modal-import'));
 document.getElementById('btn-import-ok').addEventListener('click',      () => closeModal('modal-import'));

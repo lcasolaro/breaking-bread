@@ -40,11 +40,23 @@ def init_db():
                 created_at       TEXT DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS ingredients (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                name           TEXT NOT NULL,
+                kcal_per100    REAL DEFAULT 0,
+                protein_per100 REAL DEFAULT 0,
+                carbs_per100   REAL DEFAULT 0,
+                fat_per100     REAL DEFAULT 0,
+                fiber_per100   REAL DEFAULT 0,
+                sort_order     INTEGER DEFAULT 0
+            );
+
             CREATE TABLE IF NOT EXISTS variants (
-                id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-                name      TEXT NOT NULL,
-                sort_order INTEGER DEFAULT 0
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                recipe_id   INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+                name        TEXT NOT NULL,
+                description TEXT,
+                sort_order  INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS toppings (
@@ -56,6 +68,8 @@ def init_db():
                 protein_per100 REAL,
                 carbs_per100   REAL,
                 fat_per100     REAL,
+                fiber_per100   REAL,
+                ingredient_id  INTEGER REFERENCES ingredients(id) ON DELETE SET NULL,
                 sort_order     INTEGER DEFAULT 0
             );
 
@@ -88,6 +102,52 @@ def init_db():
                 conn.execute(f"ALTER TABLE recipes ADD COLUMN {col} REAL NOT NULL DEFAULT {default}")
             except Exception:
                 pass
+
+        for col in ["description"]:
+            try:
+                conn.execute(f"ALTER TABLE variants ADD COLUMN {col} TEXT")
+            except Exception:
+                pass
+
+        for col, coltype in [
+            ("fiber_per100",  "REAL"),
+            ("ingredient_id", "INTEGER"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE toppings ADD COLUMN {col} {coltype}")
+            except Exception:
+                pass
+
+
+def seed_ingredients():
+    with get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM ingredients").fetchone()[0]
+        if count > 0:
+            return
+        items = [
+            ("Farina 00",        340, 10.0, 72.0,   1.0,  2.5),
+            ("Farina integrale",  335, 13.0, 62.0,   2.0, 11.0),
+            ("Mozzarella",        242, 17.0,  2.7,  18.0,  0.0),
+            ("Provolone",         352, 26.0,  2.2,  27.0,  0.0),
+            ("Pomodori pelati",    32,  1.5,  5.0,   0.3,  1.5),
+            ("Pomodorini",         18,  0.9,  3.5,   0.2,  1.2),
+            ("Olio d'oliva",      884,  0.0,  0.0, 100.0,  0.0),
+            ("Parmigiano",        392, 33.0,  0.0,  28.0,  0.0),
+            ("Gorgonzola",        353, 19.0,  0.0,  30.0,  0.0),
+            ("Noci",              654, 15.0, 14.0,  65.0,  6.7),
+            ("Fichi",              74,  0.7, 19.0,   0.2,  2.9),
+            ("Ricotta",           174, 11.0,  3.0,  13.0,  0.0),
+            ("Salame",            425, 21.0,  1.0,  37.0,  0.0),
+            ("Cicoli",            525, 40.0,  0.0,  40.0,  0.0),
+            ("Stracciatella",     300, 10.0,  1.5,  28.0,  0.0),
+            ("Wurstel",           290, 13.0,  1.5,  25.0,  0.0),
+            ("Patatine",          536,  5.0, 53.0,  34.0,  3.5),
+        ]
+        for i, (name, kcal, prot, carbs, fat, fiber) in enumerate(items):
+            conn.execute(
+                "INSERT INTO ingredients (name, kcal_per100, protein_per100, carbs_per100, fat_per100, fiber_per100, sort_order) VALUES (?,?,?,?,?,?,?)",
+                (name, kcal, prot, carbs, fat, fiber, i * 10)
+            )
 
 
 # ── Recipes ─────────────────────────────────────────────────────────────────
@@ -202,18 +262,21 @@ def update_recipe_sort(recipe_id: int, sort_order: int):
 
 # ── Variants ─────────────────────────────────────────────────────────────────
 
-def create_variant(recipe_id: int, name: str, sort_order: int = 0) -> int:
+def create_variant(recipe_id: int, name: str, sort_order: int = 0, description: str = None) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO variants (recipe_id, name, sort_order) VALUES (?,?,?)",
-            (recipe_id, name, sort_order)
+            "INSERT INTO variants (recipe_id, name, sort_order, description) VALUES (?,?,?,?)",
+            (recipe_id, name, sort_order, description)
         )
         return cur.lastrowid
 
 
-def update_variant(variant_id: int, name: str):
+def update_variant(variant_id: int, name: str, description: str = None):
     with get_conn() as conn:
-        conn.execute("UPDATE variants SET name=? WHERE id=?", (name, variant_id))
+        conn.execute(
+            "UPDATE variants SET name=?, description=? WHERE id=?",
+            (name, description, variant_id)
+        )
 
 
 def delete_variant(variant_id: int):
@@ -252,12 +315,14 @@ def create_topping(variant_id: int, data: dict) -> int:
     with get_conn() as conn:
         cur = conn.execute("""
             INSERT INTO toppings
-              (variant_id, name, quantity_g, kcal_per100, protein_per100, carbs_per100, fat_per100, sort_order)
-            VALUES (?,?,?,?,?,?,?,?)
+              (variant_id, name, quantity_g, kcal_per100, protein_per100, carbs_per100,
+               fat_per100, fiber_per100, ingredient_id, sort_order)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
         """, (
             variant_id, data["name"], data.get("quantity_g", 0),
             data.get("kcal_per100"), data.get("protein_per100"),
             data.get("carbs_per100"), data.get("fat_per100"),
+            data.get("fiber_per100"), data.get("ingredient_id"),
             data.get("sort_order", 0)
         ))
         return cur.lastrowid
@@ -267,12 +332,14 @@ def update_topping(topping_id: int, data: dict):
     with get_conn() as conn:
         conn.execute("""
             UPDATE toppings SET
-              name=?, quantity_g=?, kcal_per100=?, protein_per100=?, carbs_per100=?, fat_per100=?
+              name=?, quantity_g=?, kcal_per100=?, protein_per100=?, carbs_per100=?,
+              fat_per100=?, fiber_per100=?, ingredient_id=?
             WHERE id=?
         """, (
             data["name"], data.get("quantity_g", 0),
             data.get("kcal_per100"), data.get("protein_per100"),
             data.get("carbs_per100"), data.get("fat_per100"),
+            data.get("fiber_per100"), data.get("ingredient_id"),
             topping_id
         ))
 
@@ -280,6 +347,99 @@ def update_topping(topping_id: int, data: dict):
 def delete_topping(topping_id: int):
     with get_conn() as conn:
         conn.execute("DELETE FROM toppings WHERE id = ?", (topping_id,))
+
+
+def update_topping_sort(topping_id: int, sort_order: int):
+    with get_conn() as conn:
+        conn.execute("UPDATE toppings SET sort_order=? WHERE id=?", (sort_order, topping_id))
+
+
+def copy_variant(variant_id: int, target_recipe_id: int) -> int:
+    with get_conn() as conn:
+        src = dict(conn.execute("SELECT * FROM variants WHERE id=?", (variant_id,)).fetchone())
+        new_vid = conn.execute(
+            "INSERT INTO variants (recipe_id, name, sort_order, description) VALUES (?,?,?,?)",
+            (target_recipe_id, src["name"], src.get("sort_order", 0), src.get("description"))
+        ).lastrowid
+        toppings = conn.execute(
+            "SELECT * FROM toppings WHERE variant_id=? ORDER BY sort_order, id", (variant_id,)
+        ).fetchall()
+        for t in toppings:
+            t = dict(t)
+            conn.execute("""
+                INSERT INTO toppings
+                  (variant_id, name, quantity_g, kcal_per100, protein_per100, carbs_per100,
+                   fat_per100, fiber_per100, ingredient_id, sort_order)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (new_vid, t["name"], t["quantity_g"], t.get("kcal_per100"), t.get("protein_per100"),
+                  t.get("carbs_per100"), t.get("fat_per100"), t.get("fiber_per100"),
+                  t.get("ingredient_id"), t.get("sort_order", 0)))
+        return new_vid
+
+
+def copy_toppings_to_variant(source_variant_id: int, target_variant_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM toppings WHERE variant_id=?", (target_variant_id,))
+        toppings = conn.execute(
+            "SELECT * FROM toppings WHERE variant_id=? ORDER BY sort_order, id", (source_variant_id,)
+        ).fetchall()
+        for t in toppings:
+            t = dict(t)
+            conn.execute("""
+                INSERT INTO toppings
+                  (variant_id, name, quantity_g, kcal_per100, protein_per100, carbs_per100,
+                   fat_per100, fiber_per100, ingredient_id, sort_order)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (target_variant_id, t["name"], t["quantity_g"], t.get("kcal_per100"),
+                  t.get("protein_per100"), t.get("carbs_per100"), t.get("fat_per100"),
+                  t.get("fiber_per100"), t.get("ingredient_id"), t.get("sort_order", 0)))
+
+
+# ── Ingredients ───────────────────────────────────────────────────────────────
+
+def get_ingredients():
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM ingredients ORDER BY name COLLATE NOCASE, id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_ingredient(ingredient_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM ingredients WHERE id = ?", (ingredient_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def create_ingredient(data: dict) -> int:
+    with get_conn() as conn:
+        cur = conn.execute("""
+            INSERT INTO ingredients (name, kcal_per100, protein_per100, carbs_per100, fat_per100, fiber_per100, sort_order)
+            VALUES (?,?,?,?,?,?,?)
+        """, (
+            data["name"], data.get("kcal_per100", 0), data.get("protein_per100", 0),
+            data.get("carbs_per100", 0), data.get("fat_per100", 0),
+            data.get("fiber_per100", 0), data.get("sort_order", 0)
+        ))
+        return cur.lastrowid
+
+
+def update_ingredient(ingredient_id: int, data: dict):
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE ingredients SET
+              name=?, kcal_per100=?, protein_per100=?, carbs_per100=?, fat_per100=?, fiber_per100=?
+            WHERE id=?
+        """, (
+            data["name"], data.get("kcal_per100", 0), data.get("protein_per100", 0),
+            data.get("carbs_per100", 0), data.get("fat_per100", 0),
+            data.get("fiber_per100", 0), ingredient_id
+        ))
+
+
+def delete_ingredient(ingredient_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM ingredients WHERE id = ?", (ingredient_id,))
 
 
 # ── Timing Guides ─────────────────────────────────────────────────────────────

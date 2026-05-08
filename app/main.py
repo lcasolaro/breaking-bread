@@ -12,6 +12,7 @@ from app.importer import import_excel
 
 app = FastAPI(title="Breaking Bread")
 db.init_db()
+db.seed_ingredients()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -127,6 +128,7 @@ def list_all_variants():
 
 class VariantBody(BaseModel):
     name: str
+    description: Optional[str] = None
     sort_order: int = 0
 
 
@@ -134,13 +136,13 @@ class VariantBody(BaseModel):
 def create_variant(recipe_id: int, body: VariantBody):
     if not db.get_recipe(recipe_id):
         raise HTTPException(404, "Ricetta non trovata")
-    vid = db.create_variant(recipe_id, body.name, body.sort_order)
+    vid = db.create_variant(recipe_id, body.name, body.sort_order, body.description)
     return db.get_variant(vid)
 
 
 @app.put("/api/variants/{variant_id}")
 def update_variant(variant_id: int, body: VariantBody):
-    db.update_variant(variant_id, body.name)
+    db.update_variant(variant_id, body.name, body.description)
     return db.get_variant(variant_id)
 
 
@@ -159,6 +161,8 @@ class ToppingBody(BaseModel):
     protein_per100: Optional[float] = None
     carbs_per100: Optional[float] = None
     fat_per100: Optional[float] = None
+    fiber_per100: Optional[float] = None
+    ingredient_id: Optional[int] = None
     sort_order: int = 0
 
 
@@ -178,6 +182,109 @@ def update_topping(topping_id: int, body: ToppingBody):
 def delete_topping(topping_id: int):
     db.delete_topping(topping_id)
     return {"ok": True}
+
+
+class ToppingSortBody(BaseModel):
+    sort_order: int
+
+@app.patch("/api/toppings/{topping_id}/sort")
+def sort_topping(topping_id: int, body: ToppingSortBody):
+    db.update_topping_sort(topping_id, body.sort_order)
+    return {"ok": True}
+
+
+class CopyVariantBody(BaseModel):
+    target_recipe_id: int
+
+@app.post("/api/variants/{variant_id}/copy", status_code=201)
+def copy_variant_route(variant_id: int, body: CopyVariantBody):
+    new_vid = db.copy_variant(variant_id, body.target_recipe_id)
+    return db.get_variant(new_vid)
+
+
+class CopyToppingsBody(BaseModel):
+    target_variant_id: int
+
+@app.post("/api/variants/{variant_id}/copy-toppings")
+def copy_toppings_route(variant_id: int, body: CopyToppingsBody):
+    db.copy_toppings_to_variant(variant_id, body.target_variant_id)
+    return {"ok": True}
+
+
+# ── Ingredients ───────────────────────────────────────────────────────────────
+
+class IngredientBody(BaseModel):
+    name: str
+    kcal_per100: float = 0.0
+    protein_per100: float = 0.0
+    carbs_per100: float = 0.0
+    fat_per100: float = 0.0
+    fiber_per100: float = 0.0
+    sort_order: int = 0
+
+
+@app.get("/api/ingredients")
+def list_ingredients():
+    return db.get_ingredients()
+
+
+@app.post("/api/ingredients", status_code=201)
+def create_ingredient(body: IngredientBody):
+    iid = db.create_ingredient(body.model_dump())
+    return db.get_ingredient(iid)
+
+
+@app.put("/api/ingredients/{ingredient_id}")
+def update_ingredient_route(ingredient_id: int, body: IngredientBody):
+    db.update_ingredient(ingredient_id, body.model_dump())
+    return db.get_ingredient(ingredient_id)
+
+
+@app.delete("/api/ingredients/{ingredient_id}")
+def delete_ingredient_route(ingredient_id: int):
+    db.delete_ingredient(ingredient_id)
+    return {"ok": True}
+
+
+@app.get("/api/lookup-nutrition")
+def lookup_nutrition(name: str):
+    import urllib.request, urllib.parse, json as _json
+    url = (
+        "https://world.openfoodfacts.org/cgi/search.pl?"
+        + urllib.parse.urlencode({
+            "search_terms": name,
+            "search_simple": 1,
+            "action": "process",
+            "json": 1,
+            "page_size": 5,
+            "fields": "product_name,nutriments",
+        })
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            data = _json.loads(resp.read().decode())
+    except Exception as e:
+        raise HTTPException(502, f"OpenFoodFacts non raggiungibile: {e}")
+
+    for p in data.get("products", []):
+        n = p.get("nutriments", {})
+        kcal_field = n.get("energy-kcal_100g")
+        kj_field   = n.get("energy_100g")
+        if kcal_field is not None and float(kcal_field) > 0:
+            kcal = round(float(kcal_field), 1)
+        elif kj_field is not None and float(kj_field) > 0:
+            kcal = round(float(kj_field) / 4.184, 1)
+        else:
+            continue
+        return {
+            "source_name":    p.get("product_name", name),
+            "kcal_per100":    kcal,
+            "protein_per100": round(float(n.get("proteins_100g") or 0), 1),
+            "carbs_per100":   round(float(n.get("carbohydrates_100g") or 0), 1),
+            "fat_per100":     round(float(n.get("fat_100g") or 0), 1),
+            "fiber_per100":   round(float(n.get("fiber_100g") or 0), 1),
+        }
+    raise HTTPException(404, "Nessun risultato trovato su OpenFoodFacts")
 
 
 # ── Calculator ────────────────────────────────────────────────────────────────
@@ -255,7 +362,6 @@ def pizza_party(body: PartyRequest):
     if not recipe:
         raise HTTPException(404, "Ricetta non trovata")
 
-    # Build variant_quantities list with topping data
     vq_list = []
     for vq in body.variant_quantities:
         variant = db.get_variant(vq.variant_id)

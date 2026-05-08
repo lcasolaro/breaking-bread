@@ -833,6 +833,149 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 }
 .composizione-row .btn-remove:hover { color: var(--red); background: var(--red-lt); }
 
+/* ── Menù Pizze sub-navigation ──────────────────────────────────────────── */
+.menu-subnav {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--border);
+}
+.subnav-btn {
+  padding: 9px 20px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: .9rem;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  margin-bottom: -2px;
+  transition: color .15s, border-color .15s;
+  font-family: inherit;
+}
+.subnav-btn:hover { color: var(--text-2); }
+.subnav-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+
+/* ── Macro table (pizza card toppings) ──────────────────────────────────── */
+.macro-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+  margin-top: 8px;
+}
+.macro-table th {
+  text-align: left;
+  padding: 5px 6px;
+  color: var(--text-3);
+  font-size: .7rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.macro-table th.num, .macro-table td.num { text-align: right; }
+.macro-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+.macro-table tr:last-child td { border-bottom: none; }
+.macro-table tr.totale-row td { border-top: 2px solid var(--border-md); }
+.macro-table .td-actions { white-space: nowrap; text-align: right; }
+.td-actions { text-align: right; white-space: nowrap; }
+
+/* ── Ingredient library table ───────────────────────────────────────────── */
+.ingredient-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.ingredient-table th {
+  padding: 8px 10px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+  white-space: nowrap;
+}
+.ingredient-table th.num, .ingredient-table td.num { text-align: right; }
+.ingredient-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.ingredient-table tr:last-child td { border-bottom: none; }
+.ingredient-table tbody tr:hover td { background: var(--bg-hover); }
+
+/* ── Fiber macro pill ────────────────────────────────────────────────────── */
+.macro-fiber { background: var(--poolish-lt); color: var(--poolish); }
+
+/* ── Variant description ─────────────────────────────────────────────────── */
+.variant-desc {
+  font-size: .8rem;
+  color: var(--text-3);
+  font-style: italic;
+  margin-bottom: 8px;
+  padding-top: 2px;
+}
+
+/* ── Topping preview ─────────────────────────────────────────────────────── */
+.topping-preview {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.preview-label {
+  font-size: .7rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  margin-bottom: 6px;
+}
+
+/* ── Readonly nutrition fields ───────────────────────────────────────────── */
+.form-group input[readonly] {
+  background: var(--bg-hover);
+  color: var(--text-3);
+  cursor: default;
+  border-color: var(--border);
+}
+
+/* ── Multi-recipe party ─────────────────────────────────────────────────── */
+.recipe-checkbox-grid { display: flex; flex-direction: column; gap: 8px; }
+.recipe-checkbox-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 2px solid var(--border);
+  border-radius: 8px; cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.recipe-checkbox-item:hover { background: var(--bg-hover); }
+.recipe-checkbox-item.selected { border-color: var(--accent); background: var(--accent-lt, #fef0e7); }
+.recipe-checkbox-item input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.party-recipe-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.party-recipe-card-header {
+  padding: 12px 18px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.party-recipe-card-name { font-size: .9rem; font-weight: 700; color: var(--text-1); }
+.party-recipe-card-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.party-recipe-section-label {
+  font-size: .72rem; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px;
+}
+#party-recipe-cards { display: flex; flex-direction: column; gap: 0; }
+
 /* Responsive */
 @media (max-width: 600px) {
   main { padding: 16px; }
@@ -840,4 +983,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   .form-row, .form-row-3, .params-grid { grid-template-columns: 1fr; }
   header { padding: 0 16px; }
   .composizione-row select { font-size: .78rem; }
+  .macro-table { font-size: .75rem; }
+  .ingredient-table { font-size: .78rem; }
 }
