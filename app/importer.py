@@ -253,7 +253,7 @@ def parse_timings(ws):
 
 # ── Main import function ──────────────────────────────────────────────────────
 
-def import_excel(source=None, reset: bool = False, only_names=None) -> dict:
+def import_excel(source=None, reset: bool = False, only_names=None, only_ingredients=None) -> dict:
     """
     Import recipes from Excel into the DB.
     source can be a file path (str) or a BytesIO object.
@@ -282,7 +282,7 @@ def import_excel(source=None, reset: bool = False, only_names=None) -> dict:
         return {"ok": False, "error": f"Errore apertura file: {e}"}
 
     if 'Ricette' in wb.sheetnames:
-        return _import_from_template(wb, reset, only_names=only_names)
+        return _import_from_template(wb, reset, only_names=only_names, only_ingredients=only_ingredients)
 
     if reset:
         # Drop and re-create all data (preserve schema)
@@ -347,6 +347,9 @@ def import_excel(source=None, reset: bool = False, only_names=None) -> dict:
                 db.create_topping(variant_id, topping)
                 toppings_added += 1
 
+    # ── Parse ingredients sheet (library) ───────────────────────────────────
+    ingredients_added = _import_ingredients_from_sheet(wb, only_ingredients)
+
     # ── Parse timing sheet ───────────────────────────────────────────────────
     if TIMING_SHEET in wb.sheetnames:
         existing_guides = {g["name"] for g in db.get_timing_guides()}
@@ -369,11 +372,45 @@ def import_excel(source=None, reset: bool = False, only_names=None) -> dict:
         "variants_added": variants_added,
         "toppings_added": toppings_added,
         "timing_guides_added": timing_added,
+        "ingredients_added": ingredients_added,
         "errors": errors,
     }
 
 
-def _import_from_template(wb, reset: bool, only_names=None):
+def _import_ingredients_from_sheet(wb, only_ingredients=None) -> int:
+    """Import ingredients from 'Ingredienti' sheet if present. Returns count added."""
+    if 'Ingredienti' not in wb.sheetnames:
+        return 0
+    ws = wb['Ingredienti']
+    headers = {cell.value: cell.column - 1 for cell in ws[1] if cell.value}
+    existing = {i['name'] for i in db.get_ingredients()}
+    only_set = set(only_ingredients) if only_ingredients is not None else None
+    added = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(row): continue
+        row = list(row)
+        idx = headers.get('Nome')
+        name = str(row[idx]).strip() if idx is not None and idx < len(row) and row[idx] else ''
+        if not name: continue
+        if only_set is not None and name not in only_set: continue
+        if name in existing: continue
+        def gcol(col_name, default=0.0):
+            i = headers.get(col_name)
+            return safe_float(row[i] if i is not None and i < len(row) else None, default)
+        db.create_ingredient({
+            'name': name,
+            'kcal_per100': gcol('kcal/100g'),
+            'protein_per100': gcol('Proteine/100g'),
+            'carbs_per100': gcol('Carboidrati/100g'),
+            'fat_per100': gcol('Grassi/100g'),
+            'fiber_per100': gcol('Fibre/100g'),
+        })
+        existing.add(name)
+        added += 1
+    return added
+
+
+def _import_from_template(wb, reset: bool, only_names=None, only_ingredients=None):
     ws = wb['Ricette']
     ws_var = wb['Varianti'] if 'Varianti' in wb.sheetnames else None
 
@@ -480,15 +517,17 @@ def _import_from_template(wb, reset: bool, only_names=None):
                 })
                 toppings_added += 1
 
+    ingredients_added = _import_ingredients_from_sheet(wb, only_ingredients)
     return {
         'ok': True, 'format': 'template',
         'recipes_added': recipes_added, 'variants_added': variants_added,
-        'toppings_added': toppings_added, 'timing_guides_added': 0, 'errors': errors
+        'toppings_added': toppings_added, 'timing_guides_added': 0,
+        'ingredients_added': ingredients_added, 'errors': errors
     }
 
 
 def preview_excel_import(source) -> dict:
-    """Parse Excel and return list of recipe names found, without importing."""
+    """Parse Excel and return list of recipes/ingredients found, without importing."""
     try:
         if hasattr(source, 'seek'):
             source.seek(0)
@@ -496,31 +535,95 @@ def preview_excel_import(source) -> dict:
     except Exception as e:
         return {"ok": False, "error": f"Errore apertura file: {e}"}
 
-    existing = {r['name'] for r in db.get_recipes()}
+    existing_recipes = {r['name'] for r in db.get_recipes()}
+    existing_ings = {i['name'] for i in db.get_ingredients()}
 
+    # Recipes
+    recipes = []
     if 'Ricette' in wb.sheetnames:
         ws = wb['Ricette']
         headers = {cell.value: cell.column - 1 for cell in ws[1] if cell.value}
-        recipes = []
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if not any(row):
-                continue
+            if not any(row): continue
             row = list(row)
             idx = headers.get('Nome')
             name = str(row[idx]).strip() if idx is not None and idx < len(row) and row[idx] else ''
             if name:
-                recipes.append({'name': name, 'already_exists': name in existing})
-        return {'ok': True, 'format': 'template', 'recipes': recipes}
+                recipes.append({'name': name, 'already_exists': name in existing_recipes})
+        fmt = 'template'
     else:
-        recipes = [
-            {'name': sn, 'already_exists': sn in existing}
-            for sn in RECIPE_SHEETS if sn in wb.sheetnames
-        ]
-        return {'ok': True, 'format': 'legacy', 'recipes': recipes}
+        recipes = [{'name': sn, 'already_exists': sn in existing_recipes}
+                   for sn in RECIPE_SHEETS if sn in wb.sheetnames]
+        fmt = 'legacy'
+
+    # Ingredients library
+    ingredients = []
+    if 'Ingredienti' in wb.sheetnames:
+        ws_ing = wb['Ingredienti']
+        headers_ing = {cell.value: cell.column - 1 for cell in ws_ing[1] if cell.value}
+        for row in ws_ing.iter_rows(min_row=2, values_only=True):
+            if not any(row): continue
+            row = list(row)
+            idx = headers_ing.get('Nome')
+            name = str(row[idx]).strip() if idx is not None and idx < len(row) and row[idx] else ''
+            if name:
+                ingredients.append({'name': name, 'already_exists': name in existing_ings})
+
+    return {'ok': True, 'format': fmt, 'recipes': recipes, 'ingredients': ingredients}
 
 
-def export_to_excel(recipe_ids=None) -> "openpyxl.Workbook":
-    """Export all recipes and variants from DB into the importable template format."""
+def _add_ingredients_sheet(wb, sheet_title="Ingredienti"):
+    """Add an Ingredienti sheet to the workbook with all library ingredients."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+    ws = wb.create_sheet(sheet_title)
+    headers = ['Nome', 'kcal/100g', 'Proteine/100g', 'Carboidrati/100g', 'Grassi/100g', 'Fibre/100g']
+    widths = [28, 12, 14, 16, 12, 12]
+    for c, (h, w) in enumerate(zip(headers, widths), 1):
+        cell = ws.cell(row=1, column=c, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='2e7d4e')
+        cell.alignment = Alignment(horizontal='center')
+        ws.column_dimensions[ws.cell(row=1, column=c).column_letter].width = w
+    for i, ing in enumerate(db.get_ingredients(), 2):
+        ws.cell(row=i, column=1, value=ing['name'])
+        ws.cell(row=i, column=2, value=ing.get('kcal_per100') or 0)
+        ws.cell(row=i, column=3, value=ing.get('protein_per100') or 0)
+        ws.cell(row=i, column=4, value=ing.get('carbs_per100') or 0)
+        ws.cell(row=i, column=5, value=ing.get('fat_per100') or 0)
+        ws.cell(row=i, column=6, value=ing.get('fiber_per100') or 0)
+    return ws
+
+
+def create_ingredients_template() -> "openpyxl.Workbook":
+    """Download template for the ingredient library."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Istruzioni"
+    ws.column_dimensions['A'].width = 72
+    ws['A1'] = '🥗 BREAKING BREAD — Template Ingredienti'
+    ws['A1'].font = Font(bold=True, size=14, color='2e7d4e')
+    ws['A2'] = 'Compila il foglio "Ingredienti". Ogni riga è un ingrediente della libreria.'
+    ws['A3'] = 'Le colonne non devono essere rinominate. I numeri decimali usano il punto (es. 17.5).'
+    wb2 = openpyxl.Workbook()
+    wb2.active.title = "dummy"
+    _add_ingredients_sheet(wb, "Ingredienti")
+    # Example rows
+    ws_ing = wb["Ingredienti"]
+    examples = [
+        ('Mozzarella fior di latte', 242, 17.1, 2.7, 18.3, 0),
+        ('Pomodoro San Marzano', 18, 1.0, 3.5, 0.2, 1.5),
+        ('Basilico fresco', 22, 3.2, 1.1, 0.6, 1.8),
+    ]
+    for i, ex in enumerate(examples, 2):
+        for c, v in enumerate(ex, 1):
+            ws_ing.cell(row=i, column=c, value=v)
+    return wb
+
+
+def export_to_excel(recipe_ids=None, export_type='recipes') -> "openpyxl.Workbook":
+    """Export recipes/variants/ingredients based on export_type ('recipes','ingredients','backup')."""
     from openpyxl.styles import Font, PatternFill, Alignment
 
     wb = openpyxl.Workbook()
@@ -529,10 +632,14 @@ def export_to_excel(recipe_ids=None) -> "openpyxl.Workbook":
     ws = wb.active
     ws.title = "Istruzioni"
     ws.column_dimensions['A'].width = 72
-    ws['A1'] = '🍕 BREAKING BREAD — Esportazione Ricette'
+    ws['A1'] = '🍕 BREAKING BREAD — Esportazione'
     ws['A1'].font = Font(bold=True, size=14, color='C8550A')
-    ws['A2'] = 'Questo file può essere reimportato tramite il pulsante "Importa da Excel" nell\'app.'
+    ws['A2'] = 'Questo file può essere reimportato tramite il pulsante "Importa" nell\'app.'
     ws['A3'] = 'Le colonne NON devono essere rinominate. I numeri decimali usano il punto (es. 0.5).'
+
+    if export_type == 'ingredients':
+        _add_ingredients_sheet(wb)
+        return wb
 
     # ── Sheet 2: Ricette ─────────────────────────────────────────────────────
     ws2 = wb.create_sheet("Ricette")
@@ -607,6 +714,9 @@ def export_to_excel(recipe_ids=None) -> "openpyxl.Workbook":
                 ws3.cell(row=row_idx, column=7, value=topping.get('carbs_per100'))
                 ws3.cell(row=row_idx, column=8, value=topping.get('fat_per100'))
                 row_idx += 1
+
+    if export_type == 'backup':
+        _add_ingredients_sheet(wb)
 
     return wb
 

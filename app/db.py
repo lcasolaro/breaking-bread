@@ -435,6 +435,16 @@ def update_ingredient(ingredient_id: int, data: dict):
             data.get("carbs_per100", 0), data.get("fat_per100", 0),
             data.get("fiber_per100", 0), ingredient_id
         ))
+        # Propagate name and macros to all toppings linked to this ingredient (preserve quantity_g)
+        conn.execute("""
+            UPDATE toppings SET
+              name=?, kcal_per100=?, protein_per100=?, carbs_per100=?, fat_per100=?, fiber_per100=?
+            WHERE ingredient_id=?
+        """, (
+            data["name"], data.get("kcal_per100") or 0, data.get("protein_per100") or 0,
+            data.get("carbs_per100") or 0, data.get("fat_per100") or 0,
+            data.get("fiber_per100") or 0, ingredient_id
+        ))
 
 
 def delete_ingredient(ingredient_id: int):

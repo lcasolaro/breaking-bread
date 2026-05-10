@@ -17,8 +17,8 @@
     <button class="tab-btn" data-tab="planner">📅 Pianifica</button>
   </nav>
   <div class="header-actions">
-    <button class="btn btn-secondary btn-sm" id="btn-export">Esporta Ricette</button>
-    <a class="btn btn-secondary btn-sm" href="/api/import-template" download="template_ricette.xlsx" id="btn-template">Scarica Template</a>
+    <button class="btn btn-secondary btn-sm" id="btn-export">Esporta</button>
+    <button class="btn btn-secondary btn-sm" id="btn-template">Scarica Template</button>
     <button class="btn btn-secondary btn-sm" id="btn-import">Importa da Excel</button>
     <button class="btn btn-primary btn-sm" id="btn-new-recipe">+ Nuova Ricetta</button>
   </div>
@@ -108,6 +108,9 @@
         </div>
         <div id="planner-timeline" style="display:none"></div>
         <div id="planner-calendar-section" style="display:none;padding:14px 18px;border-top:1px solid var(--border)">
+          <button class="btn btn-secondary" id="planner-btn-share" style="width:100%;margin-bottom:10px">
+            📤 Condividi riepilogo
+          </button>
           <button class="btn btn-secondary" id="planner-btn-connect" style="width:100%;margin-bottom:10px">
             🗓 Connetti Google Calendar
           </button>
@@ -382,17 +385,63 @@
   </div>
 </div>
 
-<!-- ── Modal: Esporta Ricette ─────────────────────────────────────────── -->
+<!-- ── Modal: Esporta ─────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-export">
   <div class="modal" style="max-width:440px">
     <div class="modal-header">
-      <span class="modal-title">Esporta Ricette</span>
+      <span class="modal-title">Esporta</span>
       <button class="btn-icon" id="modal-export-close">✕</button>
     </div>
     <div class="modal-body" id="modal-export-body"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="btn-export-cancel">Annulla</button>
-      <button class="btn btn-primary" id="btn-export-confirm">Esporta selezionate</button>
+      <button class="btn btn-primary" id="btn-export-confirm">Esporta</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Scarica Template ────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-template">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Scarica Template</span>
+      <button class="btn-icon" id="modal-template-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-2);font-size:.88rem;margin-bottom:16px">Scegli il template da scaricare per preparare il file da importare.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-secondary" id="btn-template-recipes" style="justify-content:flex-start;gap:10px;text-align:left">
+          <span style="font-size:1.1rem">🍕</span>
+          <div>
+            <div style="font-weight:600">Template Ricette</div>
+            <div style="font-size:.78rem;color:var(--text-3)">Ricette, varianti e ingredienti pizza</div>
+          </div>
+        </button>
+        <button class="btn btn-secondary" id="btn-template-ingredients" style="justify-content:flex-start;gap:10px;text-align:left">
+          <span style="font-size:1.1rem">🥫</span>
+          <div>
+            <div style="font-weight:600">Template Libreria Ingredienti</div>
+            <div style="font-size:.78rem;color:var(--text-3)">Ingredienti con valori nutrizionali</div>
+          </div>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-template-cancel">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Lookup Disambiguation ──────────────────────────────────── -->
+<div class="modal-overlay" id="modal-lookup">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Scegli ingrediente</span>
+      <button class="btn-icon" id="modal-lookup-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-lookup-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-lookup-cancel">Annulla</button>
     </div>
   </div>
 </div>

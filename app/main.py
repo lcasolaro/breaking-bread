@@ -94,29 +94,36 @@ def sort_recipe(recipe_id: int, body: SortBody):
 
 
 @app.get("/api/import-template")
-def download_template():
-    from app.importer import create_import_template
+def download_template(type: str = "recipes"):
+    from app.importer import create_import_template, create_ingredients_template
     buf = io.BytesIO()
-    create_import_template().save(buf)
+    if type == "ingredients":
+        create_ingredients_template().save(buf)
+        filename = "template_ingredienti.xlsx"
+    else:
+        create_import_template().save(buf)
+        filename = "template_ricette.xlsx"
     buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=template_ricette.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
 @app.get("/api/export-excel")
-def export_excel(ids: str = None):
+def export_excel(ids: str = None, type: str = "recipes"):
     from app.importer import export_to_excel
     recipe_ids = [int(x) for x in ids.split(',') if x.strip()] if ids else None
     buf = io.BytesIO()
-    export_to_excel(recipe_ids=recipe_ids).save(buf)
+    export_to_excel(recipe_ids=recipe_ids, export_type=type).save(buf)
     buf.seek(0)
+    filenames = {"ingredients": "ingredienti.xlsx", "backup": "backup_completo.xlsx"}
+    filename = filenames.get(type, "ricette_export.xlsx")
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=ricette_export.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
@@ -255,7 +262,7 @@ def delete_ingredient_route(ingredient_id: int):
 
 
 @app.get("/api/lookup-nutrition")
-def lookup_nutrition(name: str):
+def lookup_nutrition(name: str, limit: int = 1):
     import urllib.request, urllib.parse, json as _json
     url = (
         "https://world.openfoodfacts.org/cgi/search.pl?"
@@ -264,7 +271,7 @@ def lookup_nutrition(name: str):
             "search_simple": 1,
             "action": "process",
             "json": 1,
-            "page_size": 5,
+            "page_size": min(limit * 3, 20),
             "fields": "product_name,nutriments",
         })
     )
@@ -274,6 +281,7 @@ def lookup_nutrition(name: str):
     except Exception as e:
         raise HTTPException(502, f"OpenFoodFacts non raggiungibile: {e}")
 
+    results = []
     for p in data.get("products", []):
         n = p.get("nutriments", {})
         kcal_field = n.get("energy-kcal_100g")
@@ -284,15 +292,20 @@ def lookup_nutrition(name: str):
             kcal = round(float(kj_field) / 4.184, 1)
         else:
             continue
-        return {
+        results.append({
             "source_name":    p.get("product_name", name),
             "kcal_per100":    kcal,
             "protein_per100": round(float(n.get("proteins_100g") or 0), 1),
             "carbs_per100":   round(float(n.get("carbohydrates_100g") or 0), 1),
             "fat_per100":     round(float(n.get("fat_100g") or 0), 1),
             "fiber_per100":   round(float(n.get("fiber_100g") or 0), 1),
-        }
-    raise HTTPException(404, "Nessun risultato trovato su OpenFoodFacts")
+        })
+        if len(results) >= limit:
+            break
+
+    if not results:
+        raise HTTPException(404, "Nessun risultato trovato su OpenFoodFacts")
+    return results if limit > 1 else results[0]
 
 
 # ── Calculator ────────────────────────────────────────────────────────────────
@@ -435,8 +448,9 @@ def update_timing_guide(guide_id: int, body: TimingBody):
 # ── Import ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/import-excel")
-async def do_import(file: UploadFile = File(...), reset: bool = False, only: str = None):
+async def do_import(file: UploadFile = File(...), reset: bool = False, only: str = None, only_ingredients: str = None):
     only_names = [x.strip() for x in only.split(',') if x.strip()] if only else None
+    only_ings = [x.strip() for x in only_ingredients.split(',') if x.strip()] if only_ingredients else None
     buf = io.BytesIO(await file.read())
-    result = import_excel(buf, reset=reset, only_names=only_names)
+    result = import_excel(buf, reset=reset, only_names=only_names, only_ingredients=only_ings)
     return result
