@@ -4,6 +4,28 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-10 (v4 — sync ingredienti, export/import redesign, planner share, UX)
+
+### Sync automatico ingredienti → pizze
+Modificando un ingrediente in libreria (nome, kcal, macros), i valori vengono propagati automaticamente a tutti i condimenti pizza collegati via `ingredient_id`. La `quantity_g` non viene toccata.
+
+### Aggiornamento da web con disambiguazione
+Il pulsante 🔍 per ingrediente ora chiama `/api/lookup-nutrition?limit=5`. Se trovato un solo risultato, apre direttamente la modale di modifica pre-compilata. Se trovati più risultati, mostra una modale di scelta con nome prodotto e macros per selezionare quello corretto.
+
+### Export / Import / Template unificati
+Il pulsante "Esporta Ricette" diventa **"Esporta"** con modale a tre opzioni: Ricette (selezione checkbox), Libreria Ingredienti (tutta), Backup completo (ricette + varianti + ingredienti in un solo file reimportabile). Il flusso Import mostra separatamente le ricette e gli ingredienti trovati nel file, con checkbox indipendenti. **"Scarica Template"** apre una modale con due template: Ricette e Libreria Ingredienti. Tutti i template/export/import sono compatibili tra loro.
+
+### Varianti pizza ordinate alfabeticamente
+Le varianti nel tab Menù Pizze sono sempre mostrate in ordine alfabetico (sort client-side al momento del render, senza modificare il DB).
+
+### No scroll al salvataggio / copia pizza
+`saveCopyVariant()` non chiama più `loadRecipes()` (che scrollava in cima), ma aggiorna solo `allVariants` e fa re-render della sezione corrente.
+
+### Pulsante "Condividi riepilogo" nel Pianificatore
+Nuova azione "📤 Condividi riepilogo" nel pannello risultati del Pianificatore. Genera un testo con la timeline step per step. Su iOS usa la share sheet nativa; su desktop copia negli appunti.
+
+---
+
 ## 2026-05-10 (v3 — ordine ingredienti canonico + export/import selettivo)
 
 ### Ordine canonico degli ingredienti nelle pizze
