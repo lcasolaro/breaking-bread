@@ -97,8 +97,8 @@
           <div class="planner-step-header"><span class="step-num">3</span> Stagione</div>
           <div class="planner-step-body">
             <div class="planner-season-toggle" id="planner-season-toggle">
-              <button class="season-btn" data-season="estate" onclick="selectPlannerSeason('estate')">☀️ Estate</button>
-              <button class="season-btn" data-season="inverno" onclick="selectPlannerSeason('inverno')">❄️ Inverno</button>
+              <button class="season-btn" data-season="estate">☀️ Estate</button>
+              <button class="season-btn" data-season="inverno">❄️ Inverno</button>
             </div>
             <p id="planner-season-note" style="font-size:.78rem;color:var(--text-3);margin-top:8px"></p>
           </div>
@@ -113,10 +113,10 @@
         </div>
         <div id="planner-timeline" style="display:none"></div>
         <div id="planner-calendar-section" style="display:none;padding:14px 18px;border-top:1px solid var(--border)">
-          <button class="btn btn-secondary" id="planner-btn-connect" onclick="connectGoogleCalendar()" style="width:100%;margin-bottom:10px">
+          <button class="btn btn-secondary" id="planner-btn-connect" style="width:100%;margin-bottom:10px">
             🗓 Connetti Google Calendar
           </button>
-          <button class="btn btn-primary" id="planner-btn-create" onclick="createCalendarEvents()" style="width:100%" disabled>
+          <button class="btn btn-primary" id="planner-btn-create" style="width:100%" disabled>
             ✓ Crea eventi su Calendar
           </button>
           <p id="planner-gcal-note" style="font-size:.73rem;color:var(--text-3);margin-top:8px;text-align:center"></p>

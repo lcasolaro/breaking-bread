@@ -4,7 +4,15 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
-## 2026-05-10
+## 2026-05-10 (v2 — bugfix e miglioramenti planner)
+
+### Fix onclick/module scope — tutti i bottoni ora funzionano
+`app.js` è caricato come `type="module"`, quindi le funzioni non erano nello scope globale e tutti i handler `onclick="..."` inline (Condividi, Pianificatore) erano silenziosi. Convertito tutto a `addEventListener` aggiunto dopo il render dinamico. Include: bottone Condividi, bottone Salva, recipe card, day pills, time pills, season toggle, bottoni Google Calendar.
+
+### Bottone "Salva e pianifica" nel Pizza Party
+Dopo aver configurato un Pizza Party, il pulsante "💾 Salva e pianifica" (ora primario) porta direttamente al tab Pianifica con la ricetta pre-selezionata e il numero di pizze già mostrato nel descrittore della card. La mappatura nome→chiave avviene tramite keyword match (napoletana, focaccia/teglia, brioche).
+
+## 2026-05-10 (v1)
 
 ### UI ottimizzata per iPhone / mobile
 Riscrittura completa delle media query. Modifiche principali: header a 2 righe su schermi <580px con tab scorrevoli orizzontalmente; pulsanti secondari (Esporta, Template) nascosti su mobile; `font-size: 16px` su tutti gli input (previene zoom automatico di iOS); touch target ≥ 44px; tabelle con `overflow-x: auto`; `results-panel` del Pizza Party non più sticky su mobile con auto-scroll verso i risultati dopo il calcolo.

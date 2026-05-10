@@ -1646,11 +1646,13 @@ function renderPartyResults(outcomes) {
       <div class="results-section-body">${shoppingHTML}</div>
     </div>
     ${recipeSections}
-    <div style="padding:16px 18px 8px">
-      <button class="btn btn-secondary share-party-btn" onclick="sharePartyResults()" style="width:100%">
-        📤 Condividi riepilogo
-      </button>
+    <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" id="party-btn-save" style="width:100%">💾 Salva e pianifica</button>
+      <button class="btn btn-secondary" id="party-btn-share" style="width:100%">📤 Condividi riepilogo</button>
     </div>`;
+
+  document.getElementById('party-btn-share').addEventListener('click', sharePartyResults);
+  document.getElementById('party-btn-save').addEventListener('click', savePartyForPlanner);
 }
 
 function formatPartyText(outcomes) {
@@ -1782,7 +1784,7 @@ function debounce(fn, ms) {
 // ── Pianificatore Impasti ─────────────────────────────────────────────────────
 
 // Inserire qui il client_id OAuth da Google Cloud Console (Calendar API abilitata)
-const GOOGLE_CLIENT_ID = '';
+const GOOGLE_CLIENT_ID = '630068197345-e012i77rep7i806llt6dpmgkqv3m9fbv.apps.googleusercontent.com';
 
 const TIMING_DATA = {
   focaccia: {
@@ -1845,6 +1847,34 @@ let plannerTimeline = [];
 let googleTokenClient = null;
 let googleAccessToken = null;
 let plannerInited = false;
+let savedPartyConfig = null; // set by savePartyForPlanner()
+
+function partyRecipeToPlanner(recipeName) {
+  const n = (recipeName || '').toLowerCase();
+  if (n.includes('napoletana') || n.includes('napolit')) return 'napoletana';
+  if (n.includes('focaccia') || n.includes('teglia')) return 'focaccia';
+  if (n.includes('brioche') || n.includes('bun') || n.includes('bread')) return 'brioche';
+  return null;
+}
+
+function savePartyForPlanner() {
+  const activeRecipes = allRecipes.filter(r => partyState[r.id]?.active);
+  if (!activeRecipes.length) return;
+  const recipe = activeRecipes[0];
+  const state = partyState[recipe.id];
+  savedPartyConfig = {
+    recipeName: recipe.name,
+    recipeKey: partyRecipeToPlanner(recipe.name),
+    pieces: state.pieces || recipe.default_pieces,
+  };
+  // switch al tab planner
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="planner"]').classList.add('active');
+  document.getElementById('tab-planner').classList.add('active');
+  plannerInited = false; // forza re-init per mostrare la config del party
+  initPlanner();
+}
 
 function initPlanner() {
   if (plannerInited) return;
@@ -1852,21 +1882,44 @@ function initPlanner() {
   renderPlannerRecipeCards();
   renderPlannerDayPills();
   renderPlannerTimePills();
+
+  // Season buttons (static HTML → wire via JS)
+  document.querySelectorAll('.season-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectPlannerSeason(btn.dataset.season));
+  });
+
+  // Calendar buttons (static HTML → wire via JS)
+  document.getElementById('planner-btn-connect').addEventListener('click', connectGoogleCalendar);
+  document.getElementById('planner-btn-create').addEventListener('click', createCalendarEvents);
+
   const month = new Date().getMonth() + 1;
   const autoSeason = (month >= 4 && month <= 10) ? 'estate' : 'inverno';
   selectPlannerSeason(autoSeason, true);
+
+  // Se arriva da "Salva Pizza Party", pre-seleziona la ricetta
+  if (savedPartyConfig?.recipeKey) {
+    selectPlannerRecipe(savedPartyConfig.recipeKey);
+  }
 }
 
 function renderPlannerRecipeCards() {
   const el = document.getElementById('planner-recipe-cards');
-  el.innerHTML = Object.entries(TIMING_DATA).map(([key, r]) => `
-    <div class="planner-recipe-card" id="planner-rc-${key}" onclick="selectPlannerRecipe('${key}')">
+  el.innerHTML = Object.entries(TIMING_DATA).map(([key, r]) => {
+    const fromParty = savedPartyConfig?.recipeKey === key;
+    const desc = fromParty
+      ? `🍕 Dal Pizza Party — ${savedPartyConfig.pieces} pizze`
+      : r.serviceLabel;
+    return `<div class="planner-recipe-card${fromParty ? ' active' : ''}" id="planner-rc-${key}" data-key="${key}">
       <span class="planner-recipe-emoji">${r.emoji}</span>
       <div>
         <div class="planner-recipe-name">${r.name}</div>
-        <div class="planner-recipe-desc">${r.serviceLabel}</div>
+        <div class="planner-recipe-desc">${desc}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.planner-recipe-card').forEach(card => {
+    card.addEventListener('click', () => selectPlannerRecipe(card.dataset.key));
+  });
 }
 
 function renderPlannerDayPills() {
@@ -1878,17 +1931,23 @@ function renderPlannerDayPills() {
     d.setDate(today.getDate() + i);
     const dateStr = d.toISOString().slice(0, 10);
     const label = i === 0 ? 'Oggi' : i === 1 ? 'Domani' : d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' });
-    days.push(`<button class="planner-pill" data-day="${dateStr}" onclick="selectPlannerDay('${dateStr}')">${label}</button>`);
+    days.push(`<button class="planner-pill" data-day="${dateStr}">${label}</button>`);
   }
   el.innerHTML = days.join('');
+  el.querySelectorAll('.planner-pill').forEach(btn => {
+    btn.addEventListener('click', () => selectPlannerDay(btn.dataset.day));
+  });
 }
 
 function renderPlannerTimePills() {
   const el = document.getElementById('planner-time-pills');
   const presets = ['12:30','13:00','19:00','19:30','20:00','20:30','21:00'];
   el.innerHTML = presets.map(t =>
-    `<button class="planner-pill" data-time="${t}" onclick="selectPlannerTime('${t}')">${t}</button>`
-  ).join('') + `<button class="planner-pill" data-time="altro" onclick="selectPlannerTime('altro')">Altro...</button>`;
+    `<button class="planner-pill" data-time="${t}">${t}</button>`
+  ).join('') + `<button class="planner-pill" data-time="altro">Altro...</button>`;
+  el.querySelectorAll('.planner-pill').forEach(btn => {
+    btn.addEventListener('click', () => selectPlannerTime(btn.dataset.time));
+  });
 }
 
 function selectPlannerRecipe(key) {
