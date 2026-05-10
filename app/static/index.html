@@ -14,6 +14,7 @@
     <button class="tab-btn active" data-tab="ricette">Ricette</button>
     <button class="tab-btn" data-tab="menu">Menù Pizze</button>
     <button class="tab-btn" data-tab="party">Pizza Party</button>
+    <button class="tab-btn" data-tab="planner">📅 Pianifica</button>
   </nav>
   <div class="header-actions">
     <a class="btn btn-secondary btn-sm" href="/api/export-excel" download="ricette_export.xlsx" id="btn-export">Esporta Ricette</a>
@@ -60,6 +61,67 @@
     </div>
     <div class="menu-view" id="menu-view-ingredienti" style="display:none">
       <!-- Ingredient library rendered by JS -->
+    </div>
+  </div>
+
+  <!-- ── Tab: Pianificatore ──────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-planner">
+    <div class="section-header">
+      <h1 class="section-title">Pianificatore Impasti</h1>
+    </div>
+    <div class="planner-layout">
+      <!-- Sinistra: configurazione -->
+      <div class="planner-steps">
+
+        <div class="planner-step">
+          <div class="planner-step-header"><span class="step-num">1</span> Scegli l'impasto</div>
+          <div class="planner-step-body">
+            <div id="planner-recipe-cards" class="planner-recipe-grid"></div>
+          </div>
+        </div>
+
+        <div class="planner-step">
+          <div class="planner-step-header"><span class="step-num">2</span> Quando lo servi?</div>
+          <div class="planner-step-body">
+            <div class="planner-field-label">Giorno</div>
+            <div id="planner-day-pills" class="planner-pills"></div>
+            <div class="planner-field-label" style="margin-top:14px">Orario</div>
+            <div id="planner-time-pills" class="planner-pills"></div>
+            <div id="planner-custom-time-row" style="display:none;margin-top:10px">
+              <input type="time" id="planner-custom-time" class="planner-time-input">
+            </div>
+          </div>
+        </div>
+
+        <div class="planner-step">
+          <div class="planner-step-header"><span class="step-num">3</span> Stagione</div>
+          <div class="planner-step-body">
+            <div class="planner-season-toggle" id="planner-season-toggle">
+              <button class="season-btn" data-season="estate" onclick="selectPlannerSeason('estate')">☀️ Estate</button>
+              <button class="season-btn" data-season="inverno" onclick="selectPlannerSeason('inverno')">❄️ Inverno</button>
+            </div>
+            <p id="planner-season-note" style="font-size:.78rem;color:var(--text-3);margin-top:8px"></p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Destra: timeline + azioni -->
+      <div class="planner-results">
+        <div id="planner-timeline-empty" class="results-empty">
+          Configura impasto, giorno e ora per vedere la timeline.
+        </div>
+        <div id="planner-timeline" style="display:none"></div>
+        <div id="planner-calendar-section" style="display:none;padding:14px 18px;border-top:1px solid var(--border)">
+          <button class="btn btn-secondary" id="planner-btn-connect" onclick="connectGoogleCalendar()" style="width:100%;margin-bottom:10px">
+            🗓 Connetti Google Calendar
+          </button>
+          <button class="btn btn-primary" id="planner-btn-create" onclick="createCalendarEvents()" style="width:100%" disabled>
+            ✓ Crea eventi su Calendar
+          </button>
+          <p id="planner-gcal-note" style="font-size:.73rem;color:var(--text-3);margin-top:8px;text-align:center"></p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -347,6 +409,7 @@
 <!-- ── Toast ─────────────────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="/static/app.js" type="module"></script>
 </body>
 </html>

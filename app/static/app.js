@@ -46,6 +46,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'party') renderPartyRecipes();
     if (btn.dataset.tab === 'menu') renderMenuTab();
+    if (btn.dataset.tab === 'planner') initPlanner();
   });
 });
 
@@ -71,6 +72,7 @@ let variantiSelectedRecipeId = null;
 let menuSubView = 'pizze';
 let editingRecipe = null;
 let toppingsCache = {};
+let lastPartyOutcomes = [];
 
 // ── Load data ─────────────────────────────────────────────────────────────────
 
@@ -1599,10 +1601,14 @@ function doughTableHTML(d) {
 }
 
 function renderPartyResults(outcomes) {
+  lastPartyOutcomes = outcomes;
   const empty   = document.getElementById('results-empty');
   const content = document.getElementById('results-content');
   empty.style.display = 'none';
   content.style.display = '';
+  if (window.innerWidth < 900) {
+    setTimeout(() => document.getElementById('results-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  }
 
   // Combined shopping list
   const shoppingTotals = {};
@@ -1639,7 +1645,80 @@ function renderPartyResults(outcomes) {
       <div class="results-section-title">Lista Spesa Condimenti</div>
       <div class="results-section-body">${shoppingHTML}</div>
     </div>
-    ${recipeSections}`;
+    ${recipeSections}
+    <div style="padding:16px 18px 8px">
+      <button class="btn btn-secondary share-party-btn" onclick="sharePartyResults()" style="width:100%">
+        📤 Condividi riepilogo
+      </button>
+    </div>`;
+}
+
+function formatPartyText(outcomes) {
+  const dateStr = new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+  const lines = [`🍕 PIZZA PARTY — ${dateStr}`, ''];
+
+  outcomes.forEach(({ recipe, result, error }) => {
+    if (error || !result) return;
+    const portionDenom = partyState[recipe.id]?.portion_denominator || 4;
+    const emoji = getRecipeEmoji(recipe.name);
+    const d = result.dough;
+
+    lines.push('═'.repeat(32));
+    lines.push(`${emoji} ${recipe.name.toUpperCase()} — IMPASTO`);
+    let doughLine = `Farina: ${Math.round(d.flour_g)} g  |  Acqua: ${Math.round(d.water_g)} g  |  Sale: ${Math.round(d.salt_g)} g`;
+    if (d.yeast_g > 0) doughLine += `  |  Lievito: ${Math.round(d.yeast_g)} g`;
+    lines.push(doughLine);
+    if (d.biga_flour_g > 0)     lines.push(`  ↳ BIGA: ${Math.round(d.biga_flour_g)} g farina`);
+    if (d.poolish_flour_g > 0)  lines.push(`  ↳ POOLISH: ${Math.round(d.poolish_flour_g)} g farina`);
+    if (d.autolisi_flour_g > 0) lines.push(`  ↳ AUTOLISI: ${Math.round(d.autolisi_flour_g)} g farina`);
+    (d.extra_ingredients || []).forEach(e => lines.push(`  ↳ ${e.name}: ${Math.round(e.grams)} g`));
+    lines.push(`${d.actual_pieces} panetti × ${Math.round(d.actual_ball_g)} g`);
+    lines.push('');
+
+    result.variants.filter(v => v.count > 0).forEach(v => {
+      lines.push(`${v.name.toUpperCase()} × ${v.count} pizza${v.count > 1 ? 'e' : ''}`);
+      lines.push('─'.repeat(28));
+      v.toppings.forEach(t => lines.push(`  ${t.name}: ${Math.round(t.quantity_g_per_pizza)} g / pizza`));
+      const kcalPizza = Math.round(v.per_pizza_macros.kcal);
+      const kcalFetta = Math.round(v.per_portion_macros.kcal);
+      if (kcalPizza > 0) lines.push(`  🔥 ${kcalPizza} kcal / pizza  |  ${kcalFetta} kcal / fetta (1/${portionDenom})`);
+      lines.push('');
+    });
+  });
+
+  const shoppingTotals = {};
+  outcomes.forEach(({ result }) => {
+    if (!result) return;
+    (result.shopping_list || []).forEach(s => {
+      shoppingTotals[s.name] = (shoppingTotals[s.name] || 0) + s.total_g;
+    });
+  });
+  const combined = Object.entries(shoppingTotals).sort((a, b) => b[1] - a[1]);
+  if (combined.length) {
+    lines.push('═'.repeat(32));
+    lines.push('LISTA DELLA SPESA');
+    combined.forEach(([name, g]) => lines.push(`  ${name}: ${Math.round(g)} g`));
+  }
+
+  return lines.join('\n');
+}
+
+async function sharePartyResults() {
+  const text = formatPartyText(lastPartyOutcomes);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: '🍕 Pizza Party', text });
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Condivisione non riuscita', 'error');
+    }
+  } else {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Riepilogo copiato negli appunti!');
+    } catch (e) {
+      window.open(`mailto:?subject=${encodeURIComponent('🍕 Pizza Party')}&body=${encodeURIComponent(text)}`);
+    }
+  }
 }
 
 // ── Menu sub-nav ──────────────────────────────────────────────────────────────
@@ -1698,6 +1777,323 @@ document.getElementById('btn-import-ok').addEventListener('click',      () => cl
 function debounce(fn, ms) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ── Pianificatore Impasti ─────────────────────────────────────────────────────
+
+// Inserire qui il client_id OAuth da Google Cloud Console (Calendar API abilitata)
+const GOOGLE_CLIENT_ID = '';
+
+const TIMING_DATA = {
+  focaccia: {
+    name: 'Focaccia Romana in Teglia', emoji: '🟢',
+    calendarColorId: '2',
+    serviceLabel: 'Orario in cui la focaccia è pronta',
+    serviceEventName: '🍕 Focaccia pronta — Servizio',
+    serviceEventDuration: 0,
+    steps: [
+      { name: 'Preparazione prefermenti (biga + poolish)', inverno: 15, estate: 15, note: '' },
+      { name: 'Prefermenti a temperatura ambiente', inverno: 240, estate: 60, note: 'Poolish dopo 1h può andare in frigo' },
+      { name: 'Prefermenti in frigo', inverno: 1440, estate: 1440, note: 'Minimo 24h, max 48h' },
+      { name: 'Chiusura impasto', inverno: 30, estate: 30, note: '' },
+      { name: 'Riposo impasto', inverno: 120, estate: 60, note: 'Guida: 1.5× volume' },
+      { name: 'Staglio', inverno: 15, estate: 15, note: 'Base umida in alto, cospargi farina' },
+      { name: 'Lievitazione panetti + stesura', inverno: 240, estate: 240, note: 'Guida: 2× volume. Stesura: 80% teglia, parte umida sotto, lavora ultimi 2cm' },
+      { name: 'Accensione forno + preriscaldo', inverno: 30, estate: 30, note: '280-290°' },
+      { name: 'Prima cottura', inverno: 10, estate: 10, note: 'Fondo più che platea' },
+      { name: 'Seconda cottura', inverno: 3, estate: 3, note: '2-4 min, stessa T°, sciogliere ingredienti' },
+    ],
+  },
+  napoletana: {
+    name: 'Pizza Napoletana', emoji: '🍕',
+    calendarColorId: '7',
+    serviceLabel: 'Orario di inizio pizzata (prima pizza)',
+    serviceEventName: '🍕 Pizzata',
+    serviceEventDuration: 90,
+    steps: [
+      { name: 'Preparazione prefermenti (biga + poolish)', inverno: 15, estate: 15, note: '' },
+      { name: 'Prefermenti a temperatura ambiente', inverno: 240, estate: 60, note: 'Poolish dopo 1h può andare in frigo' },
+      { name: 'Prefermenti in frigo', inverno: 1440, estate: 1440, note: 'Minimo 24h, max 48h' },
+      { name: 'Chiusura impasto', inverno: 30, estate: 30, note: '' },
+      { name: 'Riposo impasto', inverno: 120, estate: 60, note: 'Guida: 1.5× volume' },
+      { name: 'Staglio', inverno: 15, estate: 15, note: 'Base umida in alto, cospargi farina' },
+      { name: 'Lievitazione panetti', inverno: 210, estate: 120, note: 'Guida: 2× volume' },
+      { name: 'Accensione forno + preriscaldo', inverno: 25, estate: 25, note: '' },
+    ],
+  },
+  brioche: {
+    name: 'Pasta Brioche', emoji: '🥐',
+    calendarColorId: '5',
+    serviceLabel: 'Orario di uscita dal forno',
+    serviceEventName: '🥐 Brioche pronta — Servizio',
+    serviceEventDuration: 0,
+    steps: [
+      { name: 'Impasto fase 1 (formazione glutine)', inverno: 10, estate: 10, note: 'Tutti gli ingredienti eccetto metà zucchero, sale, burro, aromi' },
+      { name: 'Impasto fase 2 (struttura finale)', inverno: 10, estate: 60, note: 'Aggiungi zucchero + sale. Controlla T° < 26°, altrimenti frigo' },
+      { name: 'Impasto fase 3 — chiusura', inverno: 15, estate: 15, note: 'Burro + aromi poco alla volta. T° 24-26° se frigo, 27-28° se porzioni subito' },
+      { name: 'Riposo a temperatura ambiente', inverno: 20, estate: 20, note: '' },
+      { name: 'Lievitazione massa in frigo 4°', inverno: 720, estate: 480, note: 'Guida: 1.5× volume' },
+      { name: 'Divisione e formatura', inverno: 10, estate: 10, note: 'Conviene fare preforma' },
+      { name: 'Lievitazione + farcitura forme', inverno: 240, estate: 120, note: 'Guida: 2× volume' },
+      { name: 'Cottura', inverno: 20, estate: 20, note: 'Preriscaldo 190°, abbassa a 170° in infornata. Bun: 15-17 min, Bauletti: 25 min' },
+    ],
+  },
+};
+
+let plannerState = { recipe: null, day: null, time: null, season: null };
+let plannerTimeline = [];
+let googleTokenClient = null;
+let googleAccessToken = null;
+let plannerInited = false;
+
+function initPlanner() {
+  if (plannerInited) return;
+  plannerInited = true;
+  renderPlannerRecipeCards();
+  renderPlannerDayPills();
+  renderPlannerTimePills();
+  const month = new Date().getMonth() + 1;
+  const autoSeason = (month >= 4 && month <= 10) ? 'estate' : 'inverno';
+  selectPlannerSeason(autoSeason, true);
+}
+
+function renderPlannerRecipeCards() {
+  const el = document.getElementById('planner-recipe-cards');
+  el.innerHTML = Object.entries(TIMING_DATA).map(([key, r]) => `
+    <div class="planner-recipe-card" id="planner-rc-${key}" onclick="selectPlannerRecipe('${key}')">
+      <span class="planner-recipe-emoji">${r.emoji}</span>
+      <div>
+        <div class="planner-recipe-name">${r.name}</div>
+        <div class="planner-recipe-desc">${r.serviceLabel}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderPlannerDayPills() {
+  const el = document.getElementById('planner-day-pills');
+  const today = new Date();
+  const days = [];
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const label = i === 0 ? 'Oggi' : i === 1 ? 'Domani' : d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' });
+    days.push(`<button class="planner-pill" data-day="${dateStr}" onclick="selectPlannerDay('${dateStr}')">${label}</button>`);
+  }
+  el.innerHTML = days.join('');
+}
+
+function renderPlannerTimePills() {
+  const el = document.getElementById('planner-time-pills');
+  const presets = ['12:30','13:00','19:00','19:30','20:00','20:30','21:00'];
+  el.innerHTML = presets.map(t =>
+    `<button class="planner-pill" data-time="${t}" onclick="selectPlannerTime('${t}')">${t}</button>`
+  ).join('') + `<button class="planner-pill" data-time="altro" onclick="selectPlannerTime('altro')">Altro...</button>`;
+}
+
+function selectPlannerRecipe(key) {
+  plannerState.recipe = key;
+  document.querySelectorAll('.planner-recipe-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('planner-rc-' + key).classList.add('active');
+  tryCalcPlannerTimeline();
+}
+
+function selectPlannerDay(dateStr) {
+  plannerState.day = dateStr;
+  document.querySelectorAll('#planner-day-pills .planner-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.day === dateStr);
+  });
+  tryCalcPlannerTimeline();
+}
+
+function selectPlannerTime(timeStr) {
+  document.querySelectorAll('#planner-time-pills .planner-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.time === timeStr);
+  });
+  const customRow = document.getElementById('planner-custom-time-row');
+  if (timeStr === 'altro') {
+    customRow.style.display = '';
+    document.getElementById('planner-custom-time').onchange = (e) => {
+      plannerState.time = e.target.value;
+      tryCalcPlannerTimeline();
+    };
+    plannerState.time = null;
+  } else {
+    customRow.style.display = 'none';
+    plannerState.time = timeStr;
+    tryCalcPlannerTimeline();
+  }
+}
+
+function selectPlannerSeason(season, silent = false) {
+  plannerState.season = season;
+  document.querySelectorAll('.season-btn').forEach(b => b.classList.toggle('active', b.dataset.season === season));
+  const note = document.getElementById('planner-season-note');
+  note.textContent = season === 'estate'
+    ? 'Estate: aprile–ottobre o T° ambiente ≥ 20°C'
+    : 'Inverno: novembre–marzo o T° ambiente < 20°C';
+  if (!silent) tryCalcPlannerTimeline();
+}
+
+function tryCalcPlannerTimeline() {
+  const { recipe, day, time, season } = plannerState;
+  const empty = document.getElementById('planner-timeline-empty');
+  const tl = document.getElementById('planner-timeline');
+  const calSection = document.getElementById('planner-calendar-section');
+  if (!recipe || !day || !time || !season) {
+    empty.style.display = '';
+    tl.style.display = 'none';
+    calSection.style.display = 'none';
+    return;
+  }
+  const serviceDateTime = new Date(`${day}T${time}:00`);
+  plannerTimeline = calcPlannerTimeline(recipe, serviceDateTime, season);
+  renderPlannerTimeline(plannerTimeline, recipe);
+  empty.style.display = 'none';
+  tl.style.display = '';
+  calSection.style.display = '';
+}
+
+function calcPlannerTimeline(recipeKey, serviceDateTime, season) {
+  const recipe = TIMING_DATA[recipeKey];
+  const events = [];
+  let current = new Date(serviceDateTime);
+
+  // Calcolo a ritroso: l'ultimo step finisce all'orario di servizio
+  for (let i = recipe.steps.length - 1; i >= 0; i--) {
+    const step = recipe.steps[i];
+    const durMin = step[season];
+    const end = new Date(current);
+    const start = new Date(current.getTime() - durMin * 60000);
+    events.unshift({ name: step.name, note: step.note, start, end, durMin });
+    current = start;
+  }
+
+  // Aggiunge l'evento di servizio finale
+  const serviceEnd = recipe.serviceEventDuration > 0
+    ? new Date(serviceDateTime.getTime() + recipe.serviceEventDuration * 60000)
+    : new Date(serviceDateTime);
+  events.push({ name: recipe.serviceEventName, note: '', start: new Date(serviceDateTime), end: serviceEnd, isService: true });
+
+  return splitMidnight(events);
+}
+
+function splitMidnight(events) {
+  const result = [];
+  for (const ev of events) {
+    const startDay = ev.start.toDateString();
+    const endDay = ev.end.toDateString();
+    if (startDay !== endDay && ev.start < ev.end) {
+      const midnight = new Date(ev.end);
+      midnight.setHours(0, 0, 0, 0);
+      result.push({ ...ev, name: ev.name + ' (1/2)', end: new Date(midnight), isMidnightSplit: true });
+      result.push({ ...ev, name: ev.name + ' (2/2)', start: new Date(midnight), isMidnightSplit: true });
+    } else {
+      result.push(ev);
+    }
+  }
+  return result;
+}
+
+function fmtTime(date) {
+  return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDay(date) {
+  return date.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function renderPlannerTimeline(events, recipeKey) {
+  const el = document.getElementById('planner-timeline');
+  const recipe = TIMING_DATA[recipeKey];
+  let lastDay = null;
+  let rows = '';
+  for (const ev of events) {
+    const day = ev.start.toDateString();
+    if (day !== lastDay) {
+      rows += `<tr><td colspan="3" style="padding:8px 12px 4px;font-size:.72rem;font-weight:700;color:var(--text-3);text-transform:uppercase;background:var(--bg-hover)">${fmtDay(ev.start)}</td></tr>`;
+      lastDay = day;
+    }
+    const timeStr = `${fmtTime(ev.start)}${ev.isService && recipe.serviceEventDuration > 0 ? ' → ' + fmtTime(ev.end) : ev.isService ? '' : ' → ' + fmtTime(ev.end)}`;
+    const serviceClass = ev.isService ? 'timeline-service' : '';
+    const midnightBadge = ev.isMidnightSplit ? '<span class="timeline-badge-midnight">🌙 passa mezzanotte</span>' : '';
+    rows += `<tr class="${serviceClass}">
+      <td class="timeline-time">${fmtTime(ev.start)}</td>
+      <td><div>${ev.name}${midnightBadge}</div>${ev.note ? `<div class="timeline-note">${ev.note}</div>` : ''}</td>
+      <td class="timeline-time" style="color:var(--text-3)">${fmtTime(ev.end)}</td>
+    </tr>`;
+  }
+  el.innerHTML = `
+    <div class="planner-timeline-header">
+      <span>Timeline — ${recipe.name}</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="timeline-table">
+        <thead><tr><th>Inizio</th><th>Step</th><th>Fine</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function initGoogleAuth() {
+  if (!GOOGLE_CLIENT_ID || typeof google === 'undefined' || !google.accounts) return;
+  googleTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/calendar.events',
+    callback: (response) => {
+      if (response.error) { toast('Autenticazione Google fallita', 'error'); return; }
+      googleAccessToken = response.access_token;
+      const btn = document.getElementById('planner-btn-connect');
+      btn.textContent = '✓ Google connesso';
+      btn.classList.replace('btn-secondary', 'btn-primary');
+      document.getElementById('planner-btn-create').disabled = false;
+      toast('Google Calendar connesso!', 'success');
+    },
+  });
+}
+
+function connectGoogleCalendar() {
+  if (!GOOGLE_CLIENT_ID) {
+    document.getElementById('planner-gcal-note').textContent =
+      'Configura GOOGLE_CLIENT_ID in app.js per usare questa funzione.';
+    return;
+  }
+  if (!googleTokenClient) initGoogleAuth();
+  if (googleTokenClient) googleTokenClient.requestAccessToken();
+}
+
+async function createCalendarEvents() {
+  if (!googleAccessToken || !plannerTimeline.length) return;
+  const recipeKey = plannerState.recipe;
+  const recipe = TIMING_DATA[recipeKey];
+  const btn = document.getElementById('planner-btn-create');
+  btn.disabled = true;
+  btn.textContent = 'Creazione in corso...';
+
+  let created = 0, errors = 0;
+  for (const ev of plannerTimeline) {
+    if (ev.isService && recipe.serviceEventDuration === 0) continue; // skip zero-duration service markers
+    const body = {
+      summary: `${recipe.emoji} ${ev.name}`,
+      description: ev.note || '',
+      start: { dateTime: ev.start.toISOString(), timeZone: 'Europe/Rome' },
+      end:   { dateTime: ev.end.toISOString(),   timeZone: 'Europe/Rome' },
+      colorId: recipe.calendarColorId,
+    };
+    try {
+      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) created++; else errors++;
+    } catch { errors++; }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '✓ Crea eventi su Calendar';
+  if (errors === 0) toast(`${created} eventi creati su Google Calendar!`, 'success');
+  else toast(`${created} creati, ${errors} errori`, 'error');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
