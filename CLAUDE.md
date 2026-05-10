@@ -41,7 +41,7 @@ import_log
 
 - `malto_pct`, `carbone_pct`, `olio_pct` are stored on recipes and shown in the UI but are **not** factored into `scale_dough` dough-weight calculations (they are display-only percentages).
 - DB schema migrations are done via try/catch `ALTER TABLE` inside `init_db()` — add new columns this way to keep backward compatibility with existing DBs.
-- `DB_PATH` and `EXCEL_PATH` can be overridden via environment variables (useful for Heroku/production via `Procfile`).
+- `DB_PATH` and `EXCEL_PATH` can be overridden via environment variables. On Railway, `DB_PATH=/data/breaking_bread.db` points to a persistent Volume mounted at `/data` — without this, the SQLite file lives on the ephemeral container filesystem and is wiped on every deploy.
 - Nutrition lookup hits the OpenFoodFacts public API (`/api/lookup-nutrition?name=...`).
 - The import template format (`export_to_excel` / `create_import_template`) uses column header names as the contract — column order is irrelevant, but header names must not change.
 

@@ -20,6 +20,9 @@ Decisioni aperte, bug noti, e cose da completare.
 
 - **`sort_order` su toppings** — Esiste nel DB e c'è un endpoint PATCH per aggiornarlo, ma non è chiaro se l'UI lo usa per il drag-and-drop o se questa feature è ancora da implementare.
 
-- **Google Calendar client_id** — Il pianificatore richiede un `GOOGLE_CLIENT_ID` da Google Cloud Console (Calendar API abilitata, JavaScript Origins configurati con `http://localhost:8001` e URL Heroku). Da configurare in `app/static/app.js` riga 1 del blocco Pianificatore. Finché non è configurato, il pulsante "Connetti Google Calendar" mostra un messaggio esplicativo ma la timeline funziona lo stesso.
-
 - **Pianificatore: caso "prefermenti già fatti"** — Attualmente il pianificatore calcola sempre dal punto zero. Il caso "ho già messo i prefermenti in frigo" (ricalcolo degli step rimanenti) non è ancora implementato.
+
+## Risolti
+
+- ~~**Dati persi al deploy su Railway**~~ — Risolto (2026-05-10): Railway Volume montato su `/data`, variabile `DB_PATH=/data/breaking_bread.db` impostata. Il DB ora persiste tra i deploy.
+- ~~**Google Calendar client_id**~~ — Configurato (2026-05-10): `GOOGLE_CLIENT_ID` inserito in `app.js`, Authorized JavaScript origins aggiornati su Google Cloud Console con URL Railway e localhost.
