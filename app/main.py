@@ -107,16 +107,24 @@ def download_template():
 
 
 @app.get("/api/export-excel")
-def export_excel():
+def export_excel(ids: str = None):
     from app.importer import export_to_excel
+    recipe_ids = [int(x) for x in ids.split(',') if x.strip()] if ids else None
     buf = io.BytesIO()
-    export_to_excel().save(buf)
+    export_to_excel(recipe_ids=recipe_ids).save(buf)
     buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=ricette_export.xlsx"}
     )
+
+
+@app.post("/api/preview-import")
+async def preview_import_route(file: UploadFile = File(...)):
+    from app.importer import preview_excel_import
+    buf = io.BytesIO(await file.read())
+    return preview_excel_import(buf)
 
 
 # ── Variants ─────────────────────────────────────────────────────────────────
@@ -427,7 +435,8 @@ def update_timing_guide(guide_id: int, body: TimingBody):
 # ── Import ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/import-excel")
-async def do_import(file: UploadFile = File(...), reset: bool = False):
+async def do_import(file: UploadFile = File(...), reset: bool = False, only: str = None):
+    only_names = [x.strip() for x in only.split(',') if x.strip()] if only else None
     buf = io.BytesIO(await file.read())
-    result = import_excel(buf, reset=reset)
+    result = import_excel(buf, reset=reset, only_names=only_names)
     return result

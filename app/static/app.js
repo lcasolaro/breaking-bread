@@ -32,6 +32,30 @@ function toast(msg, type = '') {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+// ── Canonical topping order ───────────────────────────────────────────────────
+// 0=Farina, 1=Pomodoro, 2=Mozzarella, 3=altri, 4=Parmigiano, 5=Olio
+
+function canonicalCategoryWeight(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('farina')) return 0;
+  if (['pomodoro', 'pelati', 'passata', 'pomodorini'].some(x => n.includes(x))) return 1;
+  if (['mozzarella', 'fiordilatte', 'fior di latte', 'stracciatella'].some(x => n.includes(x))) return 2;
+  if (['parmigiano', 'grana', 'pecorino'].some(x => n.includes(x))) return 4;
+  if (n.includes('olio')) return 5;
+  return 3;
+}
+
+function sortToppingsCanonically(toppings) {
+  return [...toppings].sort((a, b) => {
+    const ca = canonicalCategoryWeight(a.name);
+    const cb = canonicalCategoryWeight(b.name);
+    if (ca !== cb) return ca - cb;
+    const sa = a.sort_order ?? 0, sb = b.sort_order ?? 0;
+    if (sa !== sb) return sa - sb;
+    return (a.id || 0) - (b.id || 0);
+  });
+}
+
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
@@ -97,8 +121,9 @@ function renderRecipeGrid() {
     grid.innerHTML = `
       <div class="empty-state">
         <p>Nessuna ricetta trovata.</p>
-        <button class="btn btn-primary" onclick="triggerImport()">Importa da Excel</button>
+        <button class="btn btn-primary" id="btn-import-empty">Importa da Excel</button>
       </div>`;
+    document.getElementById('btn-import-empty').addEventListener('click', triggerImport);
     return;
   }
   grid.innerHTML = allRecipes.map(r => recipeCardHTML(r)).join('');
@@ -817,57 +842,150 @@ async function refreshMenuTab() {
   }
 }
 
-// ── Import ─────────────────────────────────────────────────────────────────────
+// ── Export / Import ────────────────────────────────────────────────────────────
+
+function openExportModal() {
+  const body = document.getElementById('modal-export-body');
+  if (!allRecipes.length) {
+    body.innerHTML = `<p style="color:var(--text-3);padding:8px">Nessuna ricetta da esportare.</p>`;
+    openModal('modal-export');
+    return;
+  }
+  const items = allRecipes.map(r => `
+    <label class="import-recipe-item">
+      <input type="checkbox" class="export-recipe-check" value="${r.id}" checked>
+      <span>${getRecipeEmoji(r.name)} ${r.name}</span>
+    </label>`).join('');
+  body.innerHTML = `
+    <div style="padding:4px">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-ghost btn-sm" id="export-sel-all">Seleziona tutto</button>
+        <button class="btn btn-ghost btn-sm" id="export-desel-all">Deseleziona tutto</button>
+      </div>
+      <div class="import-recipe-list">${items}</div>
+    </div>`;
+  document.getElementById('export-sel-all').addEventListener('click', () => {
+    document.querySelectorAll('.export-recipe-check').forEach(cb => { cb.checked = true; });
+  });
+  document.getElementById('export-desel-all').addEventListener('click', () => {
+    document.querySelectorAll('.export-recipe-check').forEach(cb => { cb.checked = false; });
+  });
+  openModal('modal-export');
+}
+
+let pendingImportFile = null;
+
+function importLoadingHTML(msg = 'Analisi file in corso...') {
+  return `<div style="text-align:center; padding:24px">
+    <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 12px"></div>
+    <p style="color:var(--text-3)">${msg}</p>
+  </div>`;
+}
 
 async function triggerImport() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.xlsx';
   input.onchange = async () => {
-    const file = input.files[0];
-    if (!file) return;
+    pendingImportFile = input.files[0];
+    if (!pendingImportFile) return;
 
     openModal('modal-import');
-    document.getElementById('modal-import-body').innerHTML = `
-      <div style="text-align:center; padding:24px">
-        <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 12px"></div>
-        <p style="color:var(--text-3)">Importazione in corso...</p>
-      </div>`;
+    document.getElementById('modal-import-body').innerHTML = importLoadingHTML();
     document.getElementById('btn-import-ok').style.display = 'none';
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      const resp = await fetch('/api/import-excel', { method: 'POST', body: formData });
+      formData.append('file', pendingImportFile);
+      const resp = await fetch('/api/preview-import', { method: 'POST', body: formData });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const res = await resp.json();
-      let html = '';
-      if (res.ok) {
-        html = `
-          <p style="color:var(--green); font-weight:700; margin-bottom:12px">Importazione completata!</p>
-          <ul style="font-size:.9rem; line-height:2">
-            <li>Ricette aggiunte: <strong>${res.recipes_added}</strong></li>
-            <li>Varianti: <strong>${res.variants_added}</strong></li>
-            <li>Ingredienti: <strong>${res.toppings_added}</strong></li>
-            <li>Guide tempistiche: <strong>${res.timing_guides_added}</strong></li>
-          </ul>`;
-        if (res.errors && res.errors.length) {
-          html += `<p style="color:var(--gold); margin-top:12px; font-size:.82rem">
-            Avvisi: ${res.errors.join(' · ')}</p>`;
-        }
+      const preview = await resp.json();
+      if (!preview.ok) {
+        showImportError(preview.error);
       } else {
-        html = `<p style="color:var(--red)">Errore: ${res.error}</p>`;
+        showImportPreview(preview);
       }
-      document.getElementById('modal-import-body').innerHTML = `<div style="padding:4px">${html}</div>`;
-      document.getElementById('btn-import-ok').style.display = 'inline-flex';
-      await loadRecipes();
     } catch (e) {
-      document.getElementById('modal-import-body').innerHTML =
-        `<p style="color:var(--red); padding:8px">Errore durante l'importazione: ${e.message}</p>`;
-      document.getElementById('btn-import-ok').style.display = 'inline-flex';
+      showImportError(e.message);
     }
   };
   input.click();
+}
+
+function showImportPreview(preview) {
+  const n = preview.recipes.length;
+  const items = preview.recipes.map(r => `
+    <label class="import-recipe-item">
+      <input type="checkbox" class="import-recipe-check" value="${r.name}" checked>
+      <span>${r.name}${r.already_exists ? ' <span class="import-exists-badge">già presente</span>' : ''}</span>
+    </label>`).join('');
+
+  document.getElementById('modal-import-body').innerHTML = `
+    <div style="padding:4px">
+      <p style="font-size:.88rem;color:var(--text-2);margin-bottom:10px">
+        ${n} ricett${n === 1 ? 'a' : 'e'} trovata${n === 1 ? '' : 'e'} nel file.
+      </p>
+      <div class="import-recipe-list">${items || '<p style="color:var(--text-3)">Nessuna ricetta trovata.</p>'}</div>
+      <label class="import-recipe-item" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+        <input type="checkbox" id="import-reset-check">
+        <span style="font-size:.82rem;color:var(--text-3)">Sovrascrivi ricette già presenti</span>
+      </label>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px" id="btn-do-import">
+        Importa selezionate
+      </button>
+    </div>`;
+
+  document.getElementById('btn-do-import').addEventListener('click', doImportSelected);
+}
+
+async function doImportSelected() {
+  const checked = document.querySelectorAll('.import-recipe-check:checked');
+  const selected = Array.from(checked).map(cb => cb.value);
+  if (!selected.length) { toast('Seleziona almeno una ricetta', 'error'); return; }
+
+  const reset = document.getElementById('import-reset-check')?.checked || false;
+  document.getElementById('modal-import-body').innerHTML = importLoadingHTML('Importazione in corso...');
+  document.getElementById('btn-import-ok').style.display = 'none';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', pendingImportFile);
+    const only = encodeURIComponent(selected.join(','));
+    const resp = await fetch(`/api/import-excel?reset=${reset}&only=${only}`, { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const res = await resp.json();
+    showImportResult(res);
+    await loadRecipes();
+  } catch (e) {
+    showImportError(e.message);
+  }
+}
+
+function showImportResult(res) {
+  let html = '';
+  if (res.ok) {
+    html = `
+      <p style="color:var(--green); font-weight:700; margin-bottom:12px">Importazione completata!</p>
+      <ul style="font-size:.9rem; line-height:2">
+        <li>Ricette aggiunte: <strong>${res.recipes_added}</strong></li>
+        <li>Varianti: <strong>${res.variants_added}</strong></li>
+        <li>Ingredienti: <strong>${res.toppings_added}</strong></li>
+        <li>Guide tempistiche: <strong>${res.timing_guides_added}</strong></li>
+      </ul>`;
+    if (res.errors && res.errors.length) {
+      html += `<p style="color:var(--gold); margin-top:12px; font-size:.82rem">Avvisi: ${res.errors.join(' · ')}</p>`;
+    }
+  } else {
+    html = `<p style="color:var(--red)">Errore: ${res.error}</p>`;
+  }
+  document.getElementById('modal-import-body').innerHTML = `<div style="padding:4px">${html}</div>`;
+  document.getElementById('btn-import-ok').style.display = 'inline-flex';
+}
+
+function showImportError(msg) {
+  document.getElementById('modal-import-body').innerHTML =
+    `<p style="color:var(--red); padding:8px">Errore: ${msg}</p>`;
+  document.getElementById('btn-import-ok').style.display = 'inline-flex';
 }
 
 // ── Menù Pizze Tab ────────────────────────────────────────────────────────────
@@ -954,7 +1072,7 @@ function calcToppingMacros(t) {
 }
 
 function variantHTML(v) {
-  const rows = v.toppings.map(t => ({ t, m: calcToppingMacros(t) }));
+  const rows = sortToppingsCanonically(v.toppings).map(t => ({ t, m: calcToppingMacros(t) }));
   const hasNutrition = rows.some(({ m }) => m.kcal != null || m.protein != null);
 
   const sumOf = key => {
@@ -1560,12 +1678,13 @@ async function calcParty() {
 }
 
 function partyVariantCardHTML(v, portionDenom = 4) {
-  const hasMacros = v.toppings.some(t => t.macros_per_pizza.kcal > 0);
+  const sortedToppings = sortToppingsCanonically(v.toppings);
+  const hasMacros = sortedToppings.some(t => t.macros_per_pizza.kcal > 0);
   let tableHTML;
-  if (!v.toppings.length) {
+  if (!sortedToppings.length) {
     tableHTML = `<p style="color:var(--text-3);font-size:.8rem">Nessun condimento</p>`;
   } else {
-    const bodyRows = v.toppings.map(t => {
+    const bodyRows = sortedToppings.map(t => {
       const m = t.macros_per_pizza;
       return `<tr>
         <td>${t.name}</td>
@@ -1680,7 +1799,7 @@ function formatPartyText(outcomes) {
     result.variants.filter(v => v.count > 0).forEach(v => {
       lines.push(`${v.name.toUpperCase()} × ${v.count} pizza${v.count > 1 ? 'e' : ''}`);
       lines.push('─'.repeat(28));
-      v.toppings.forEach(t => lines.push(`  ${t.name}: ${Math.round(t.quantity_g_per_pizza)} g / pizza`));
+      sortToppingsCanonically(v.toppings).forEach(t => lines.push(`  ${t.name}: ${Math.round(t.quantity_g_per_pizza)} g / pizza`));
       const kcalPizza = Math.round(v.per_pizza_macros.kcal);
       const kcalFetta = Math.round(v.per_portion_macros.kcal);
       if (kcalPizza > 0) lines.push(`  🔥 ${kcalPizza} kcal / pizza  |  ${kcalFetta} kcal / fetta (1/${portionDenom})`);
@@ -1746,6 +1865,22 @@ document.querySelectorAll('.subnav-btn').forEach(btn => {
 
 document.getElementById('btn-new-recipe').addEventListener('click', openNewRecipe);
 document.getElementById('btn-import').addEventListener('click', triggerImport);
+document.getElementById('btn-export').addEventListener('click', openExportModal);
+
+document.getElementById('modal-export-close').addEventListener('click', () => closeModal('modal-export'));
+document.getElementById('btn-export-cancel').addEventListener('click',  () => closeModal('modal-export'));
+document.getElementById('btn-export-confirm').addEventListener('click', () => {
+  const checked = document.querySelectorAll('.export-recipe-check:checked');
+  const ids = Array.from(checked).map(cb => cb.value).join(',');
+  if (!ids) { toast('Seleziona almeno una ricetta', 'error'); return; }
+  const a = document.createElement('a');
+  a.href = `/api/export-excel?ids=${ids}`;
+  a.download = 'ricette_export.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  closeModal('modal-export');
+});
 
 document.getElementById('modal-recipe-close').addEventListener('click', () => closeModal('modal-recipe'));
 document.getElementById('btn-recipe-cancel').addEventListener('click',  () => closeModal('modal-recipe'));

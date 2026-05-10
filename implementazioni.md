@@ -4,6 +4,17 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-10 (v3 — ordine ingredienti canonico + export/import selettivo)
+
+### Ordine canonico degli ingredienti nelle pizze
+Le varianti pizza mostrano sempre gli ingredienti in ordine fisso: Farina → Pomodoro → Mozzarella → altri ingredienti → Parmigiano/Grana → Olio. L'ordinamento viene applicato lato JS al momento del render (senza modificare il DB), così funziona su tutti i dati esistenti e su quelli nuovi. Gli ingredienti mancanti vengono semplicemente saltati; il riordine manuale (↑ ↓) continua a funzionare all'interno della stessa categoria.
+
+### Export ricette selettive
+Il pulsante "Esporta Ricette" apre ora una modale con le ricette selezionabili tramite checkbox (tutte pre-selezionate). Con "Seleziona tutto" / "Deseleziona tutto" si gestisce velocemente la selezione. Il backend accetta il parametro `?ids=1,2,3` per filtrare il file `.xlsx` esportato. L'endpoint `/api/export-excel` rimane compatibile senza parametri (esporta tutto).
+
+### Import ricette selettivo (2 step)
+Il flusso di importazione è ora a due passi: (1) il file viene analizzato via `/api/preview-import` che restituisce la lista delle ricette trovate con badge "già presente"; (2) l'utente sceglie quali importare con checkbox e opzionalmente spunta "Sovrascrivi ricette già presenti" (reset selettivo, elimina solo le ricette selezionate prima di reimportarle). Il backend accetta `?only=Nome1,Nome2` per importare un sottoinsieme.
+
 ## 2026-05-10 (v2 — bugfix e miglioramenti planner)
 
 ### Fix onclick/module scope — tutti i bottoni ora funzionano

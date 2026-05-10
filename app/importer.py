@@ -253,7 +253,7 @@ def parse_timings(ws):
 
 # ── Main import function ──────────────────────────────────────────────────────
 
-def import_excel(source=None, reset: bool = False) -> dict:
+def import_excel(source=None, reset: bool = False, only_names=None) -> dict:
     """
     Import recipes from Excel into the DB.
     source can be a file path (str) or a BytesIO object.
@@ -282,7 +282,7 @@ def import_excel(source=None, reset: bool = False) -> dict:
         return {"ok": False, "error": f"Errore apertura file: {e}"}
 
     if 'Ricette' in wb.sheetnames:
-        return _import_from_template(wb, reset)
+        return _import_from_template(wb, reset, only_names=only_names)
 
     if reset:
         # Drop and re-create all data (preserve schema)
@@ -296,6 +296,9 @@ def import_excel(source=None, reset: bool = False) -> dict:
     for sheet_name in RECIPE_SHEETS:
         if sheet_name not in wb.sheetnames:
             errors.append(f"Sheet '{sheet_name}' non trovata")
+            continue
+
+        if only_names is not None and sheet_name not in only_names:
             continue
 
         # Skip if recipe already exists
@@ -370,16 +373,18 @@ def import_excel(source=None, reset: bool = False) -> dict:
     }
 
 
-def _import_from_template(wb, reset: bool):
+def _import_from_template(wb, reset: bool, only_names=None):
     ws = wb['Ricette']
     ws_var = wb['Varianti'] if 'Varianti' in wb.sheetnames else None
 
     recipes_added = 0; variants_added = 0; toppings_added = 0; errors = []
+    only_set = set(only_names) if only_names is not None else None
 
     if reset:
         existing_recipes = db.get_recipes()
         for r in existing_recipes:
-            db.delete_recipe(r["id"])
+            if only_set is None or r['name'] in only_set:
+                db.delete_recipe(r["id"])
 
     # Read header row to get column mapping
     headers = {cell.value: cell.column - 1 for cell in ws[1] if cell.value}
@@ -398,7 +403,7 @@ def _import_from_template(wb, reset: bool):
         try: return int(float(v)) if v is not None else d
         except: return d
 
-    # Read existing recipe names to avoid duplicates
+    # Read existing recipe names to avoid duplicates (refresh after potential reset)
     existing = {r['name'] for r in db.get_recipes()}
 
     for row in ws.iter_rows(min_row=2, values_only=True):
@@ -406,6 +411,7 @@ def _import_from_template(wb, reset: bool):
         row = list(row)
         name = str(col(row, 'Nome', '')).strip()
         if not name: continue
+        if only_set is not None and name not in only_set: continue
         if name in existing:
             errors.append(f'"{name}" già presente, saltata')
             continue
@@ -481,7 +487,39 @@ def _import_from_template(wb, reset: bool):
     }
 
 
-def export_to_excel() -> "openpyxl.Workbook":
+def preview_excel_import(source) -> dict:
+    """Parse Excel and return list of recipe names found, without importing."""
+    try:
+        if hasattr(source, 'seek'):
+            source.seek(0)
+        wb = openpyxl.load_workbook(source, data_only=True)
+    except Exception as e:
+        return {"ok": False, "error": f"Errore apertura file: {e}"}
+
+    existing = {r['name'] for r in db.get_recipes()}
+
+    if 'Ricette' in wb.sheetnames:
+        ws = wb['Ricette']
+        headers = {cell.value: cell.column - 1 for cell in ws[1] if cell.value}
+        recipes = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
+            row = list(row)
+            idx = headers.get('Nome')
+            name = str(row[idx]).strip() if idx is not None and idx < len(row) and row[idx] else ''
+            if name:
+                recipes.append({'name': name, 'already_exists': name in existing})
+        return {'ok': True, 'format': 'template', 'recipes': recipes}
+    else:
+        recipes = [
+            {'name': sn, 'already_exists': sn in existing}
+            for sn in RECIPE_SHEETS if sn in wb.sheetnames
+        ]
+        return {'ok': True, 'format': 'legacy', 'recipes': recipes}
+
+
+def export_to_excel(recipe_ids=None) -> "openpyxl.Workbook":
     """Export all recipes and variants from DB into the importable template format."""
     from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -517,6 +555,9 @@ def export_to_excel() -> "openpyxl.Workbook":
     ws2.row_dimensions[1].height = 42
 
     recipes = db.get_recipes()
+    if recipe_ids is not None:
+        ids_set = set(recipe_ids)
+        recipes = [r for r in recipes if r['id'] in ids_set]
     for i, r in enumerate(recipes, 2):
         vals = [
             r['name'],
@@ -553,7 +594,7 @@ def export_to_excel() -> "openpyxl.Workbook":
         ws3.column_dimensions[ws3.cell(row=1, column=c).column_letter].width = w
 
     row_idx = 2
-    for r in recipes:
+    for r in recipes:  # already filtered by recipe_ids above
         full = db.get_recipe(r['id'])
         for variant in full.get('variants', []):
             for topping in variant.get('toppings', []):

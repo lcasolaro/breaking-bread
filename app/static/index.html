@@ -17,7 +17,7 @@
     <button class="tab-btn" data-tab="planner">📅 Pianifica</button>
   </nav>
   <div class="header-actions">
-    <a class="btn btn-secondary btn-sm" href="/api/export-excel" download="ricette_export.xlsx" id="btn-export">Esporta Ricette</a>
+    <button class="btn btn-secondary btn-sm" id="btn-export">Esporta Ricette</button>
     <a class="btn btn-secondary btn-sm" href="/api/import-template" download="template_ricette.xlsx" id="btn-template">Scarica Template</a>
     <button class="btn btn-secondary btn-sm" id="btn-import">Importa da Excel</button>
     <button class="btn btn-primary btn-sm" id="btn-new-recipe">+ Nuova Ricetta</button>
@@ -30,12 +30,7 @@
     <div class="section-header">
       <h1 class="section-title">Le mie Ricette</h1>
     </div>
-    <div class="recipes-grid" id="recipes-grid">
-      <div class="empty-state">
-        <p>Nessuna ricetta trovata.</p>
-        <button class="btn btn-primary" id="btn-import-empty">Importa da Excel</button>
-      </div>
-    </div>
+    <div class="recipes-grid" id="recipes-grid"></div>
   </div>
 
   <!-- ── Tab: Menù Pizze ──────────────────────────────────────────────── -->
@@ -383,6 +378,21 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="btn-copy-toppings-cancel">Annulla</button>
       <button class="btn btn-primary" id="btn-copy-toppings-save">Copia ingredienti</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Esporta Ricette ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-export">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Esporta Ricette</span>
+      <button class="btn-icon" id="modal-export-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-export-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-export-cancel">Annulla</button>
+      <button class="btn btn-primary" id="btn-export-confirm">Esporta selezionate</button>
     </div>
   </div>
 </div>
