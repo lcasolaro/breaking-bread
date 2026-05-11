@@ -4,6 +4,31 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-11 (v5 — bug fix + varianti export/import + planner multi-ricetta)
+
+### Fix lookup 🔍 OpenFoodFacts
+Il pulsante 🔍 per ingrediente ora include un header `User-Agent` nella richiesta HTTP. OpenFoodFacts richiedeva questo header (senza, restituisce risultati vuoti). Nessuna modifica al contratto API.
+
+### Fix scroll Safari dopo salvataggio condimento/variante
+Dopo `renderVariantsForRecipe()` e `saveIngredient()`, la posizione di scroll viene salvata prima del render e ripristinata con `requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)))` — il doppio rAF è necessario per Safari che ritarda il layout.
+
+### Pizza Party: parametri ricetta non editabili
+In Pizza Party step 2, i campi Idratazione, Sale, Lievito, BIGA, POOLISH, AUTOLISI vengono mostrati come `<span class="param-readonly-val">` (non modificabili) — i valori provengono dalla ricetta selezionata. Solo N. Palline e Peso rimangono input editabili. BIGA, POOLISH, AUTOLISI sono ora sulla stessa riga.
+
+### Schermata Ricette: parametri read-only con edit inline
+Espandendo una ricetta, i parametri (idratazione, sale, lievito, BIGA, POOLISH, ecc.) sono in sola lettura per default. Click su "✏️ Modifica parametri" → campo diventano input editabili con live-calc. "Salva parametri" → `PUT /api/recipes/:id` → torna a view mode con valori aggiornati. "Annulla" → torna a view mode senza salvare.
+
+### Export varianti pizza (nuovo tipo)
+La modale Esporta include ora il tab "🍕 Varianti Pizza". Mostra le varianti raggruppate per ricetta con checkbox per singola variante. Il file esportato (`varianti_export.xlsx`) contiene solo il foglio Varianti (senza Ricette), reimportabile separatamente. Endpoint: `GET /api/export-excel?type=variants&variant_ids=1,2,3`.
+
+### Import varianti pizza da file varianti-only
+Il flusso di import riconosce i file con solo foglio Varianti (senza Ricette). L'anteprima mostra la sezione "Varianti pizza (N)" con checkbox e badge "già presente". Il backend crea le varianti + toppings sulle ricette esistenti nel DB (match per nome ricetta). Endpoint: `POST /api/import-excel?only_variants=Ricetta1::Var1,Ricetta1::Var2`.
+
+### Pianificatore multi-impasto
+Il Pianificatore supporta ora la selezione multipla di ricette (le card sono multi-select con toggle). Per ogni ricetta selezionata viene calcolata e mostrata una timeline separata (tabelle stacked, header colorato per ricetta). "Condividi riepilogo" genera un testo con tutte le ricette. "Crea eventi su Calendar" crea gli eventi per tutte le timeline contemporaneamente, con il colore specifico di ciascuna ricetta. "Salva e pianifica" dal Pizza Party pre-seleziona tutte le ricette attive nel party.
+
+---
+
 ## 2026-05-10 (v4 — sync ingredienti, export/import redesign, planner share, UX)
 
 ### Sync automatico ingredienti → pizze
