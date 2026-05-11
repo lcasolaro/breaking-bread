@@ -1985,54 +1985,84 @@ function renderPartyResults(outcomes) {
   document.getElementById('party-btn-save').addEventListener('click', savePartyForPlanner);
 }
 
-function formatPartyText(outcomes) {
+function formatSharedText(outcomes, timelines) {
   const dateStr = new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
   const lines = [`🍕 PIZZA PARTY — ${dateStr}`, ''];
+  const hasParty = outcomes && outcomes.some(o => o.result);
+  const hasTl = timelines && Object.keys(timelines).length > 0;
 
-  outcomes.forEach(({ recipe, result, error }) => {
-    if (error || !result) return;
-    const portionDenom = partyState[recipe.id]?.portion_denominator || 4;
-    const emoji = getRecipeEmoji(recipe.name);
-    const d = result.dough;
-
-    lines.push('═'.repeat(32));
-    lines.push(`${emoji} ${recipe.name.toUpperCase()} — IMPASTO`);
-    let doughLine = `Farina: ${Math.round(d.flour_g)} g  |  Acqua: ${Math.round(d.water_g)} g  |  Sale: ${Math.round(d.salt_g)} g`;
-    if (d.yeast_g > 0) doughLine += `  |  Lievito: ${Math.round(d.yeast_g)} g`;
-    lines.push(doughLine);
-    if (d.biga_flour_g > 0)     lines.push(`  ↳ BIGA: ${Math.round(d.biga_flour_g)} g farina`);
-    if (d.poolish_flour_g > 0)  lines.push(`  ↳ POOLISH: ${Math.round(d.poolish_flour_g)} g farina`);
-    if (d.autolisi_flour_g > 0) lines.push(`  ↳ AUTOLISI: ${Math.round(d.autolisi_flour_g)} g farina`);
-    (d.extra_ingredients || []).forEach(e => lines.push(`  ↳ ${e.name}: ${Math.round(e.grams)} g`));
-    lines.push(`${d.actual_pieces} panetti × ${Math.round(d.actual_ball_g)} g`);
-    lines.push('');
-
-    result.variants.filter(v => v.count > 0).forEach(v => {
-      lines.push(`${v.name.toUpperCase()} × ${v.count} pizza${v.count > 1 ? 'e' : ''}`);
-      lines.push('─'.repeat(28));
-      sortToppingsCanonically(v.toppings).forEach(t => lines.push(`  ${t.name}: ${Math.round(t.quantity_g_per_pizza)} g / pizza`));
-      const kcalPizza = Math.round(v.per_pizza_macros.kcal);
-      const kcalFetta = Math.round(v.per_portion_macros.kcal);
-      if (kcalPizza > 0) lines.push(`  🔥 ${kcalPizza} kcal / pizza  |  ${kcalFetta} kcal / fetta (1/${portionDenom})`);
+  // 1. Lista della spesa
+  if (hasParty) {
+    const shoppingTotals = {};
+    outcomes.forEach(({ result }) => {
+      if (!result) return;
+      (result.shopping_list || []).forEach(s => {
+        shoppingTotals[s.name] = (shoppingTotals[s.name] || 0) + s.total_g;
+      });
+    });
+    const combined = Object.entries(shoppingTotals).sort((a, b) => b[1] - a[1]);
+    if (combined.length) {
+      lines.push('══ LISTA DELLA SPESA ══');
+      combined.forEach(([name, g]) => lines.push(`☐ ${name}: ${Math.round(g)} g`));
       lines.push('');
-    });
-  });
-
-  const shoppingTotals = {};
-  outcomes.forEach(({ result }) => {
-    if (!result) return;
-    (result.shopping_list || []).forEach(s => {
-      shoppingTotals[s.name] = (shoppingTotals[s.name] || 0) + s.total_g;
-    });
-  });
-  const combined = Object.entries(shoppingTotals).sort((a, b) => b[1] - a[1]);
-  if (combined.length) {
-    lines.push('═'.repeat(32));
-    lines.push('LISTA DELLA SPESA');
-    combined.forEach(([name, g]) => lines.push(`  ${name}: ${Math.round(g)} g`));
+    }
   }
 
-  return lines.join('\n');
+  // 2. Le pizze
+  if (hasParty) {
+    lines.push('══ LE PIZZE ══');
+    outcomes.forEach(({ recipe, result, error }) => {
+      if (error || !result) return;
+      const portionDenom = partyState[recipe.id]?.portion_denominator || 4;
+      const emoji = getRecipeEmoji(recipe.name);
+      const d = result.dough;
+      lines.push(`${emoji} ${recipe.name.toUpperCase()} — IMPASTO`);
+      let doughLine = `Farina: ${Math.round(d.flour_g)} g  |  Acqua: ${Math.round(d.water_g)} g  |  Sale: ${Math.round(d.salt_g)} g`;
+      if (d.yeast_g > 0) doughLine += `  |  Lievito: ${Math.round(d.yeast_g)} g`;
+      lines.push(doughLine);
+      if (d.biga_flour_g > 0)     lines.push(`  ↳ BIGA: ${Math.round(d.biga_flour_g)} g farina`);
+      if (d.poolish_flour_g > 0)  lines.push(`  ↳ POOLISH: ${Math.round(d.poolish_flour_g)} g farina`);
+      if (d.autolisi_flour_g > 0) lines.push(`  ↳ AUTOLISI: ${Math.round(d.autolisi_flour_g)} g farina`);
+      (d.extra_ingredients || []).forEach(e => lines.push(`  ↳ ${e.name}: ${Math.round(e.grams)} g`));
+      lines.push(`${d.actual_pieces} panetti × ${Math.round(d.actual_ball_g)} g`);
+      lines.push('');
+      result.variants.filter(v => v.count > 0).forEach(v => {
+        lines.push(`${v.name.toUpperCase()} × ${v.count} pizza${v.count > 1 ? 'e' : ''}`);
+        sortToppingsCanonically(v.toppings).forEach(t => lines.push(`  ${t.name}: ${Math.round(t.quantity_g_per_pizza)} g / pizza`));
+        const kcalPizza = Math.round(v.per_pizza_macros.kcal);
+        const kcalFetta = Math.round(v.per_portion_macros.kcal);
+        if (kcalPizza > 0) lines.push(`  🔥 ${kcalPizza} kcal / pizza  |  ${kcalFetta} kcal / fetta (1/${portionDenom})`);
+        lines.push('');
+      });
+    });
+  }
+
+  // 3. Tempistiche
+  if (hasTl) {
+    lines.push('══ LE TEMPISTICHE ══');
+    for (const [recipeKey, events] of Object.entries(timelines)) {
+      const recipe = TIMING_DATA[recipeKey];
+      lines.push(`── ${recipe.emoji} ${recipe.name.toUpperCase()} ──`);
+      let lastDay = null;
+      for (const ev of events) {
+        const day = ev.start.toDateString();
+        if (day !== lastDay) {
+          lines.push(`  ${fmtDay(ev.start).toUpperCase()}`);
+          lastDay = day;
+        }
+        const marker = ev.isService ? '🍕' : '•';
+        lines.push(`  ${marker} ${fmtTime(ev.start)} → ${fmtTime(ev.end)}  ${ev.name}`);
+        if (ev.note) lines.push(`     ${ev.note}`);
+      }
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
+function formatPartyText(outcomes) {
+  return formatSharedText(outcomes, plannerTimelines);
 }
 
 async function sharePartyResults() {
@@ -2186,7 +2216,7 @@ const TIMING_DATA = {
       { name: 'Riposo impasto', inverno: 120, estate: 60, note: 'Guida: 1.5× volume' },
       { name: 'Staglio', inverno: 15, estate: 15, note: 'Base umida in alto, cospargi farina' },
       { name: 'Lievitazione panetti + stesura', inverno: 240, estate: 240, note: 'Guida: 2× volume. Stesura: 80% teglia, parte umida sotto, lavora ultimi 2cm' },
-      { name: 'Accensione forno + preriscaldo', inverno: 30, estate: 30, note: '280-290°' },
+      { name: 'Accensione forno + preriscaldo', inverno: 30, estate: 30, note: '280-290°', parallel: true },
       { name: 'Prima cottura', inverno: 10, estate: 10, note: 'Fondo più che platea' },
       { name: 'Seconda cottura', inverno: 3, estate: 3, note: '2-4 min, stessa T°, sciogliere ingredienti' },
     ],
@@ -2205,7 +2235,7 @@ const TIMING_DATA = {
       { name: 'Riposo impasto', inverno: 120, estate: 60, note: 'Guida: 1.5× volume' },
       { name: 'Staglio', inverno: 15, estate: 15, note: 'Base umida in alto, cospargi farina' },
       { name: 'Lievitazione panetti', inverno: 210, estate: 120, note: 'Guida: 2× volume' },
-      { name: 'Accensione forno + preriscaldo', inverno: 25, estate: 25, note: '' },
+      { name: 'Accensione forno + preriscaldo', inverno: 25, estate: 25, note: '', parallel: true },
     ],
   },
   brioche: {
@@ -2418,14 +2448,16 @@ function calcPlannerTimeline(recipeKey, serviceDateTime, season) {
   const events = [];
   let current = new Date(serviceDateTime);
 
-  // Calcolo a ritroso: l'ultimo step finisce all'orario di servizio
+  // Calcolo a ritroso: l'ultimo step finisce all'orario di servizio.
+  // Steps con parallel:true terminano allo stesso momento dello step successivo nella catena
+  // (es. Accensione forno è in parallelo all'ultima parte della lievitazione).
   for (let i = recipe.steps.length - 1; i >= 0; i--) {
     const step = recipe.steps[i];
     const durMin = step[season];
     const end = new Date(current);
     const start = new Date(current.getTime() - durMin * 60000);
-    events.unshift({ name: step.name, note: step.note, start, end, durMin });
-    current = start;
+    events.unshift({ name: step.name, note: step.note, start, end, durMin, parallel: !!step.parallel });
+    if (!step.parallel) current = start;
   }
 
   // Aggiunge l'evento di servizio finale
@@ -2526,34 +2558,13 @@ function connectGoogleCalendar() {
 }
 
 function formatPlannerText(timelines) {
-  const lines = ['📅 PIANIFICATORE IMPASTI', ''];
-  for (const [recipeKey, events] of Object.entries(timelines)) {
-    const recipe = TIMING_DATA[recipeKey];
-    lines.push(`── ${recipe.emoji} ${recipe.name.toUpperCase()} ──`);
-    let lastDay = null;
-    for (const ev of events) {
-      const day = ev.start.toDateString();
-      if (day !== lastDay) {
-        lines.push(`  ${fmtDay(ev.start).toUpperCase()}`);
-        lastDay = day;
-      }
-      const marker = ev.isService ? '🍕' : '•';
-      const timeRange = `${fmtTime(ev.start)} → ${fmtTime(ev.end)}`;
-      lines.push(`  ${marker} ${timeRange}  ${ev.name}`);
-      if (ev.note) lines.push(`     ${ev.note}`);
-    }
-    lines.push('');
-  }
-  return lines.join('\n');
+  return formatSharedText(lastPartyOutcomes, timelines);
 }
 
 async function sharePlannerTimeline() {
-  if (!Object.keys(plannerTimelines).length || !plannerState.recipes.length) return;
+  if (!Object.keys(plannerTimelines).length && !lastPartyOutcomes.some(o => o.result)) return;
   const text = formatPlannerText(plannerTimelines);
-  const firstKey = plannerState.recipes[0];
-  const title = plannerState.recipes.length > 1
-    ? `📅 Pianificatore Impasti (${plannerState.recipes.length} ricette)`
-    : `📅 ${TIMING_DATA[firstKey].name}`;
+  const title = '🍕 Pizza Party';
   if (navigator.share) {
     try {
       await navigator.share({ title, text });
@@ -2582,7 +2593,7 @@ async function createCalendarEvents() {
     for (const ev of events) {
       if (ev.isService && recipe.serviceEventDuration === 0) continue;
       const body = {
-        summary: `${recipe.emoji} ${ev.name}`,
+        summary: `${recipe.emoji} ${ev.name} — ${recipe.name}`,
         description: ev.note || '',
         start: { dateTime: ev.start.toISOString(), timeZone: 'Europe/Rome' },
         end:   { dateTime: ev.end.toISOString(),   timeZone: 'Europe/Rome' },
