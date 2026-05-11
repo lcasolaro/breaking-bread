@@ -253,7 +253,7 @@ def parse_timings(ws):
 
 # ── Main import function ──────────────────────────────────────────────────────
 
-def import_excel(source=None, reset: bool = False, only_names=None, only_ingredients=None) -> dict:
+def import_excel(source=None, reset: bool = False, only_names=None, only_ingredients=None, only_variant_keys=None) -> dict:
     """
     Import recipes from Excel into the DB.
     source can be a file path (str) or a BytesIO object.
@@ -283,6 +283,8 @@ def import_excel(source=None, reset: bool = False, only_names=None, only_ingredi
 
     if 'Ricette' in wb.sheetnames:
         return _import_from_template(wb, reset, only_names=only_names, only_ingredients=only_ingredients)
+    if 'Varianti' in wb.sheetnames:
+        return _import_variants_only(wb, only_variant_keys=only_variant_keys)
 
     if reset:
         # Drop and re-create all data (preserve schema)
@@ -526,6 +528,65 @@ def _import_from_template(wb, reset: bool, only_names=None, only_ingredients=Non
     }
 
 
+def _import_variants_only(wb, only_variant_keys=None):
+    """Import variants from a Varianti-only sheet, attaching them to existing recipes."""
+    ws_var = wb['Varianti']
+    var_headers = {cell.value: cell.column - 1 for cell in ws_var[1] if cell.value}
+    only_set = set(only_variant_keys) if only_variant_keys is not None else None
+    recipes_by_name = {r['name']: r['id'] for r in db.get_recipes()}
+    all_existing = db.get_all_variants()
+    current_variants = {(v['recipe_id'], v['name']): v['id'] for v in all_existing}
+    variants_count = {rid: sum(1 for v in all_existing if v['recipe_id'] == rid) for rid in recipes_by_name.values()}
+    variants_added = 0
+    toppings_added = 0
+    errors = []
+    reported_errors = set()
+
+    for row in ws_var.iter_rows(min_row=2, values_only=True):
+        if not any(row): continue
+        row = list(row)
+        def vc(n, d=None):
+            i = var_headers.get(n)
+            return row[i] if i is not None and i < len(row) and row[i] is not None else d
+        rec_name = str(vc('Ricetta', '') or '').strip()
+        var_name = str(vc('Variante', '') or '').strip()
+        ing_name = str(vc('Ingrediente', '') or '').strip()
+        if not rec_name or not var_name or not ing_name: continue
+        key = f"{rec_name}::{var_name}"
+        if only_set is not None and key not in only_set: continue
+        if rec_name not in recipes_by_name:
+            if key not in reported_errors:
+                errors.append(f'Ricetta "{rec_name}" non trovata — variante "{var_name}" saltata')
+                reported_errors.add(key)
+            continue
+        rid = recipes_by_name[rec_name]
+        vkey = (rid, var_name)
+        if vkey not in current_variants:
+            sort = variants_count.get(rid, 0) * 10
+            vid = db.create_variant(rid, var_name, sort)
+            current_variants[vkey] = vid
+            variants_count[rid] = variants_count.get(rid, 0) + 1
+            variants_added += 1
+        vid = current_variants[vkey]
+        db.create_topping(vid, {
+            'name': ing_name,
+            'quantity_g': safe_float(vc('g/pizza', 0)),
+            'kcal_per100': safe_float(vc('kcal/100g')) if vc('kcal/100g') is not None else None,
+            'protein_per100': safe_float(vc('Proteine/100g')) if vc('Proteine/100g') is not None else None,
+            'carbs_per100': safe_float(vc('Carboidrati/100g')) if vc('Carboidrati/100g') is not None else None,
+            'fat_per100': safe_float(vc('Grassi/100g')) if vc('Grassi/100g') is not None else None,
+            'sort_order': toppings_added,
+        })
+        toppings_added += 1
+
+    return {
+        'ok': True, 'format': 'variants_only',
+        'recipes_added': 0, 'variants_added': variants_added,
+        'toppings_added': toppings_added, 'timing_guides_added': 0,
+        'ingredients_added': 0, 'errors': errors,
+    }
+
+
 def preview_excel_import(source) -> dict:
     """Parse Excel and return list of recipes/ingredients found, without importing."""
     try:
@@ -569,7 +630,27 @@ def preview_excel_import(source) -> dict:
             if name:
                 ingredients.append({'name': name, 'already_exists': name in existing_ings})
 
-    return {'ok': True, 'format': fmt, 'recipes': recipes, 'ingredients': ingredients}
+    # Variants (for variant-only export files)
+    variants = []
+    if 'Varianti' in wb.sheetnames and 'Ricette' not in wb.sheetnames:
+        existing_var_pairs = {(v['recipe_name'], v['name']) for v in db.get_all_variants()}
+        ws_var = wb['Varianti']
+        var_headers = {cell.value: cell.column - 1 for cell in ws_var[1] if cell.value}
+        seen_pairs = set()
+        for row in ws_var.iter_rows(min_row=2, values_only=True):
+            if not any(row): continue
+            row = list(row)
+            ri = var_headers.get('Ricetta')
+            vi = var_headers.get('Variante')
+            rec_name = str(row[ri] if ri is not None and ri < len(row) and row[ri] else '').strip()
+            var_name = str(row[vi] if vi is not None and vi < len(row) and row[vi] else '').strip()
+            if not rec_name or not var_name: continue
+            pair = (rec_name, var_name)
+            if pair in seen_pairs: continue
+            seen_pairs.add(pair)
+            variants.append({'name': var_name, 'recipe_name': rec_name, 'already_exists': pair in existing_var_pairs})
+
+    return {'ok': True, 'format': fmt, 'recipes': recipes, 'ingredients': ingredients, 'variants': variants}
 
 
 def _add_ingredients_sheet(wb, sheet_title="Ingredienti"):
@@ -622,8 +703,8 @@ def create_ingredients_template() -> "openpyxl.Workbook":
     return wb
 
 
-def export_to_excel(recipe_ids=None, export_type='recipes') -> "openpyxl.Workbook":
-    """Export recipes/variants/ingredients based on export_type ('recipes','ingredients','backup')."""
+def export_to_excel(recipe_ids=None, variant_ids=None, export_type='recipes') -> "openpyxl.Workbook":
+    """Export recipes/variants/ingredients based on export_type ('recipes','ingredients','backup','variants')."""
     from openpyxl.styles import Font, PatternFill, Alignment
 
     wb = openpyxl.Workbook()
@@ -639,6 +720,36 @@ def export_to_excel(recipe_ids=None, export_type='recipes') -> "openpyxl.Workboo
 
     if export_type == 'ingredients':
         _add_ingredients_sheet(wb)
+        return wb
+
+    if export_type == 'variants':
+        ws_var = wb.create_sheet("Varianti")
+        variant_headers = ['Ricetta', 'Variante', 'Ingrediente', 'g/pizza', 'kcal/100g',
+                           'Proteine/100g', 'Carboidrati/100g', 'Grassi/100g']
+        widths3 = [28, 20, 28, 10, 12, 14, 16, 12]
+        for c, (h, w) in enumerate(zip(variant_headers, widths3), 1):
+            cell = ws_var.cell(row=1, column=c, value=h)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='1a7fa8')
+            cell.alignment = Alignment(horizontal='center')
+            ws_var.column_dimensions[ws_var.cell(row=1, column=c).column_letter].width = w
+        ids_set = set(variant_ids) if variant_ids is not None else None
+        row_idx = 2
+        for r in db.get_recipes():
+            full = db.get_recipe(r['id'])
+            for variant in full.get('variants', []):
+                if ids_set is not None and variant['id'] not in ids_set:
+                    continue
+                for topping in variant.get('toppings', []):
+                    ws_var.cell(row=row_idx, column=1, value=r['name'])
+                    ws_var.cell(row=row_idx, column=2, value=variant['name'])
+                    ws_var.cell(row=row_idx, column=3, value=topping['name'])
+                    ws_var.cell(row=row_idx, column=4, value=topping['quantity_g'])
+                    ws_var.cell(row=row_idx, column=5, value=topping.get('kcal_per100'))
+                    ws_var.cell(row=row_idx, column=6, value=topping.get('protein_per100'))
+                    ws_var.cell(row=row_idx, column=7, value=topping.get('carbs_per100'))
+                    ws_var.cell(row=row_idx, column=8, value=topping.get('fat_per100'))
+                    row_idx += 1
         return wb
 
     # ── Sheet 2: Ricette ─────────────────────────────────────────────────────

@@ -471,6 +471,42 @@ tr.prefermento td:first-child { padding-left: 20px; }
   color: var(--text-1);
 }
 .param-field input:focus { outline: none; border-color: var(--accent); }
+.param-readonly-val {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  font-size: .9rem;
+  color: var(--text-2);
+  box-sizing: border-box;
+}
+.param-display-val {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  font-size: .9rem;
+  color: var(--text-1);
+  box-sizing: border-box;
+  user-select: none;
+}
+.prep-row-pct .param-display-val {
+  display: inline-block;
+  width: auto;
+  padding: 2px 6px;
+  font-size: .82rem;
+}
+.edit-mode-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
 
 /* Variant counter table */
 .variants-table { width: 100%; border-collapse: collapse; }

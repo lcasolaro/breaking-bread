@@ -112,13 +112,14 @@ def download_template(type: str = "recipes"):
 
 
 @app.get("/api/export-excel")
-def export_excel(ids: str = None, type: str = "recipes"):
+def export_excel(ids: str = None, variant_ids: str = None, type: str = "recipes"):
     from app.importer import export_to_excel
     recipe_ids = [int(x) for x in ids.split(',') if x.strip()] if ids else None
+    vid_list = [int(x) for x in variant_ids.split(',') if x.strip()] if variant_ids else None
     buf = io.BytesIO()
-    export_to_excel(recipe_ids=recipe_ids, export_type=type).save(buf)
+    export_to_excel(recipe_ids=recipe_ids, variant_ids=vid_list, export_type=type).save(buf)
     buf.seek(0)
-    filenames = {"ingredients": "ingredienti.xlsx", "backup": "backup_completo.xlsx"}
+    filenames = {"ingredients": "ingredienti.xlsx", "backup": "backup_completo.xlsx", "variants": "varianti_export.xlsx"}
     filename = filenames.get(type, "ricette_export.xlsx")
     return StreamingResponse(
         buf,
@@ -276,7 +277,11 @@ def lookup_nutrition(name: str, limit: int = 1):
         })
     )
     try:
-        with urllib.request.urlopen(url, timeout=8) as resp:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "BreakingBread/1.0 (pizza dough calculator; open source)"},
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
             data = _json.loads(resp.read().decode())
     except Exception as e:
         raise HTTPException(502, f"OpenFoodFacts non raggiungibile: {e}")
@@ -448,9 +453,10 @@ def update_timing_guide(guide_id: int, body: TimingBody):
 # ── Import ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/import-excel")
-async def do_import(file: UploadFile = File(...), reset: bool = False, only: str = None, only_ingredients: str = None):
+async def do_import(file: UploadFile = File(...), reset: bool = False, only: str = None, only_ingredients: str = None, only_variants: str = None):
     only_names = [x.strip() for x in only.split(',') if x.strip()] if only else None
     only_ings = [x.strip() for x in only_ingredients.split(',') if x.strip()] if only_ingredients else None
+    only_var_keys = [x.strip() for x in only_variants.split(',') if x.strip()] if only_variants else None
     buf = io.BytesIO(await file.read())
-    result = import_excel(buf, reset=reset, only_names=only_names, only_ingredients=only_ings)
+    result = import_excel(buf, reset=reset, only_names=only_names, only_ingredients=only_ings, only_variant_keys=only_var_keys)
     return result

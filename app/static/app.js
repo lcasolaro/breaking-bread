@@ -192,14 +192,11 @@ async function toggleRecipeDetails(btn) {
   btn.querySelector('span').textContent = 'Caricamento...';
   try {
     const recipe = await api('GET', `/api/recipes/${recipeId}`);
-    details.innerHTML = recipeDetailsHTML(recipe);
+    details.innerHTML = recipeDetailsHTML(recipe, false);
     details.classList.add('open');
     icon.classList.add('open');
     btn.querySelector('span').textContent = 'Nascondi dettagli';
-
-    details.querySelectorAll('.param-pct, .proc-input').forEach(inp => {
-      inp.addEventListener('input', debounce(() => onParamChange(recipeId, recipe), 200));
-    });
+    wireRecipeDetailViewMode(details, recipe);
     onParamChange(recipeId, recipe);
   } catch (e) {
     toast('Errore caricamento dettagli', 'error');
@@ -207,49 +204,73 @@ async function toggleRecipeDetails(btn) {
   }
 }
 
-function recipeDetailsHTML(recipe) {
+function recipeDetailsHTML(recipe, editMode = false) {
   const extras = recipe.extra_ingredients || [];
+
+  // Helper: returns an editable input in editMode, or a read-only span in view mode
+  const pMain = (param, val, attrs = '') => editMode
+    ? `<input type="number" class="param-pct" data-param="${param}" ${attrs} value="${val}">`
+    : `<span class="param-display-val" data-param="${param}" data-value="${val}">${val}</span>`;
+
+  const pSec = (secParam, val, attrs = '') => editMode
+    ? `<input type="number" class="proc-input" data-sec-param="${secParam}" ${attrs} value="${val}">`
+    : `<span class="param-display-val proc-input" data-sec-param="${secParam}" data-value="${val}">${val}%</span>`;
 
   const extraRowsForSection = (section) => extras
     .map((e, i) => ({ e, i }))
     .filter(({ e }) => (e.section || 'chiusura') === section)
-    .map(({ e, i }) => `
+    .map(({ e, i }) => {
+      const pctEl = editMode
+        ? `<input type="number" class="proc-input" data-extra-idx="${i}" data-extra-section="${section}" min="0" step="0.1" value="${e.pct || 0}">%`
+        : `<span class="param-display-val proc-input" data-extra-idx="${i}" data-extra-section="${section}" data-value="${e.pct || 0}">${e.pct || 0}%</span>`;
+      return `
     <div class="prep-row">
       <span>${e.name}</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-extra-idx="${i}" data-extra-section="${section}" min="0" step="0.1" value="${e.pct || 0}">%</span>
+      <span class="prep-row-pct">${pctEl}</span>
       <span class="prep-row-grams" data-calc="extra-g-${i}">—</span>
-    </div>`).join('');
+    </div>`;
+    }).join('');
 
   const notesHTML = recipe.notes
     ? `<div style="padding:10px 18px; font-size:.82rem; color:var(--text-3); border-top:1px solid var(--border)">${recipe.notes}</div>`
     : '';
 
+  const editBar = editMode
+    ? `<div class="edit-mode-bar">
+        <button class="btn btn-sm btn-primary" id="recipe-inline-save-${recipe.id}">Salva parametri</button>
+        <button class="btn btn-sm btn-secondary" id="recipe-inline-cancel-${recipe.id}">Annulla</button>
+      </div>`
+    : `<div class="edit-mode-bar">
+        <button class="btn btn-sm btn-ghost" id="recipe-inline-edit-${recipe.id}">✏️ Modifica parametri</button>
+      </div>`;
+
   return `
 <div class="params-widget" data-recipe-id="${recipe.id}">
+  ${editBar}
   <div class="params-grid">
     <div class="param-field">
       <label>Numero panetti</label>
-      <input type="number" class="param-pct" data-param="pieces" min="1" value="${recipe.default_pieces}">
+      ${pMain('pieces', recipe.default_pieces, 'min="1"')}
     </div>
     <div class="param-field">
       <label>Peso panetto (g)</label>
-      <input type="number" class="param-pct" data-param="weight" min="50" step="5" value="${recipe.default_ball_g}">
+      ${pMain('weight', recipe.default_ball_g, 'min="50" step="5"')}
     </div>
     <div class="param-field">
       <label>Idratazione (%)</label>
-      <input type="number" class="param-pct" data-param="hydration" min="40" max="100" step="1" value="${recipe.hydration_pct}">
+      ${pMain('hydration', recipe.hydration_pct, 'min="40" max="100" step="1"')}
     </div>
     <div class="param-field">
       <label>BIGA (%)</label>
-      <input type="number" class="param-pct" data-param="biga" min="0" max="100" step="5" value="${recipe.biga_pct}">
+      ${pMain('biga', recipe.biga_pct, 'min="0" max="100" step="5"')}
     </div>
     <div class="param-field">
       <label>POOLISH (%)</label>
-      <input type="number" class="param-pct" data-param="poolish" min="0" max="100" step="5" value="${recipe.poolish_pct}">
+      ${pMain('poolish', recipe.poolish_pct, 'min="0" max="100" step="5"')}
     </div>
     <div class="param-field">
       <label>AUTOLISI (%)</label>
-      <input type="number" class="param-pct" data-param="autolisi" min="0" max="100" step="5" value="${recipe.autolisi_pct}">
+      ${pMain('autolisi', recipe.autolisi_pct, 'min="0" max="100" step="5"')}
     </div>
   </div>
   <div class="params-summary">
@@ -280,12 +301,12 @@ function recipeDetailsHTML(recipe) {
     </div>
     <div class="prep-row">
       <span>Acqua</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="biga-acqua" min="20" max="100" step="1" value="${recipe.biga_hydration_pct ?? 44}">%</span>
+      <span class="prep-row-pct">${pSec('biga-acqua', recipe.biga_hydration_pct ?? 44, 'min="20" max="100" step="1"')}</span>
       <span class="prep-row-grams" data-calc="biga-water">—</span>
     </div>
     <div class="prep-row">
       <span>Lievito</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="biga-lievito" min="0" max="5" step="0.1" value="${recipe.biga_yeast_pct ?? 0.5}">%</span>
+      <span class="prep-row-pct">${pSec('biga-lievito', recipe.biga_yeast_pct ?? 0.5, 'min="0" max="5" step="0.1"')}</span>
       <span class="prep-row-grams" data-calc="biga-yeast">—</span>
     </div>
     ${extraRowsForSection('biga')}
@@ -307,7 +328,7 @@ function recipeDetailsHTML(recipe) {
     </div>
     <div class="prep-row">
       <span>Lievito</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="poolish-lievito" min="0" max="5" step="0.05" value="${recipe.poolish_yeast_pct ?? 0.1}">%</span>
+      <span class="prep-row-pct">${pSec('poolish-lievito', recipe.poolish_yeast_pct ?? 0.1, 'min="0" max="5" step="0.05"')}</span>
       <span class="prep-row-grams" data-calc="poolish-yeast">—</span>
     </div>
     ${extraRowsForSection('poolish')}
@@ -324,7 +345,7 @@ function recipeDetailsHTML(recipe) {
     </div>
     <div class="prep-row">
       <span>Acqua</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="autolisi-acqua" min="0" max="100" step="1" value="${recipe.autolisi_water_pct || recipe.hydration_pct}">%</span>
+      <span class="prep-row-pct">${pSec('autolisi-acqua', recipe.autolisi_water_pct || recipe.hydration_pct, 'min="0" max="100" step="1"')}</span>
       <span class="prep-row-grams" data-calc="autolisi-water">—</span>
     </div>
     ${extraRowsForSection('autolisi')}
@@ -346,12 +367,12 @@ function recipeDetailsHTML(recipe) {
     </div>
     <div class="prep-row">
       <span>Sale</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="chiusura-sale" min="0" max="5" step="0.1" value="${recipe.salt_pct}">%</span>
+      <span class="prep-row-pct">${pSec('chiusura-sale', recipe.salt_pct, 'min="0" max="5" step="0.1"')}</span>
       <span class="prep-row-grams" data-calc="chiusura-salt">—</span>
     </div>
     <div class="prep-row">
       <span>Lievito <span style="font-size:.7rem; opacity:.65">(%&nbsp;tot.&nbsp;farina)</span></span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="chiusura-lievito" min="0" max="5" step="0.01" value="${recipe.yeast_pct}">%</span>
+      <span class="prep-row-pct">${pSec('chiusura-lievito', recipe.yeast_pct, 'min="0" max="5" step="0.01"')}</span>
       <span class="prep-row-grams" data-calc="chiusura-yeast">—</span>
     </div>
     <div class="prep-row">
@@ -361,12 +382,12 @@ function recipeDetailsHTML(recipe) {
     </div>
     <div class="prep-row">
       <span>Malto diastasico <span style="font-size:.7rem; opacity:.65">(% biga+poolish)</span></span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="malto" min="0" max="5" step="0.05" value="${recipe.malto_pct ?? 0}">%</span>
+      <span class="prep-row-pct">${pSec('malto', recipe.malto_pct ?? 0, 'min="0" max="5" step="0.05"')}</span>
       <span class="prep-row-grams" data-calc="malto-g">—</span>
     </div>
     <div class="prep-row">
       <span>Olio</span>
-      <span class="prep-row-pct"><input type="number" class="proc-input" data-sec-param="olio" min="0" max="10" step="0.5" value="${recipe.olio_pct ?? 0}">%</span>
+      <span class="prep-row-pct">${pSec('olio', recipe.olio_pct ?? 0, 'min="0" max="10" step="0.5"')}</span>
       <span class="prep-row-grams" data-calc="olio-g">—</span>
     </div>
     ${extraRowsForSection('chiusura')}
@@ -384,8 +405,9 @@ function onParamChange(recipeId, recipe) {
   const prep   = document.querySelector(`.prep-container[data-recipe-id="${recipeId}"]`);
   if (!widget || !prep) return;
 
-  const getMain = p => parseFloat(widget.querySelector(`[data-param="${p}"]`)?.value) || 0;
-  const getSec  = p => parseFloat(prep.querySelector(`[data-sec-param="${p}"]`)?.value) || 0;
+  const readEl  = el => el ? parseFloat(el.tagName === 'INPUT' ? el.value : (el.dataset.value ?? '')) || 0 : 0;
+  const getMain = p => readEl(widget.querySelector(`[data-param="${p}"]`));
+  const getSec  = p => readEl(prep.querySelector(`[data-sec-param="${p}"]`));
 
   const pieces    = getMain('pieces')  || 1;
   const weight    = getMain('weight');
@@ -440,7 +462,7 @@ function onParamChange(recipeId, recipe) {
   prep.querySelectorAll('[data-extra-idx]').forEach(inp => {
     const idx = inp.dataset.extraIdx;
     const section = inp.dataset.extraSection || 'chiusura';
-    const g = flour * (parseFloat(inp.value) || 0) / 100;
+    const g = flour * readEl(inp) / 100;
     set('extra-g-' + idx, g);
     if (section === 'biga') extrasBiga += g;
     else if (section === 'poolish') extrasPoolish += g;
@@ -472,6 +494,63 @@ function onParamChange(recipeId, recipe) {
   set('chiusura-total', chiusuraF + chiusuraW + saltG + chiusuraYeastG + maltoG + carboneG + olioG + extrasChiusura);
 
   set('total-impasto', totalDough);
+}
+
+function wireRecipeDetailViewMode(details, recipe) {
+  details.querySelector(`#recipe-inline-edit-${recipe.id}`)?.addEventListener('click', () => {
+    details.innerHTML = recipeDetailsHTML(recipe, true);
+    wireRecipeDetailEditMode(details, recipe);
+    onParamChange(recipe.id, recipe);
+    details.querySelectorAll('.param-pct, .proc-input').forEach(inp => {
+      inp.addEventListener('input', debounce(() => onParamChange(recipe.id, recipe), 200));
+    });
+  });
+}
+
+function wireRecipeDetailEditMode(details, recipe) {
+  details.querySelector(`#recipe-inline-save-${recipe.id}`)?.addEventListener('click', () => saveRecipeParamsInline(details, recipe));
+  details.querySelector(`#recipe-inline-cancel-${recipe.id}`)?.addEventListener('click', () => {
+    details.innerHTML = recipeDetailsHTML(recipe, false);
+    wireRecipeDetailViewMode(details, recipe);
+    onParamChange(recipe.id, recipe);
+  });
+}
+
+async function saveRecipeParamsInline(details, recipe) {
+  const widget = details.querySelector('.params-widget');
+  const prep   = details.querySelector('.prep-container');
+  const readEl  = el => el ? parseFloat(el.tagName === 'INPUT' ? el.value : (el.dataset.value ?? '')) || 0 : 0;
+  const getMain = p => readEl(widget.querySelector(`[data-param="${p}"]`));
+  const getSec  = p => readEl(prep.querySelector(`[data-sec-param="${p}"]`));
+
+  const pieces  = getMain('pieces') || 1;
+  const ballG   = getMain('weight');
+  const hydrat  = getMain('hydration');
+  const payload = {
+    name: recipe.name, description: recipe.description, notes: recipe.notes,
+    base_flour_g: Math.round(pieces * ballG / (1 + hydrat / 100)),
+    default_pieces: pieces, default_ball_g: ballG, hydration_pct: hydrat,
+    biga_pct: getMain('biga'), poolish_pct: getMain('poolish'), autolisi_pct: getMain('autolisi'),
+    biga_hydration_pct: getSec('biga-acqua'), biga_yeast_pct: getSec('biga-lievito'),
+    poolish_yeast_pct: getSec('poolish-lievito'), autolisi_water_pct: getSec('autolisi-acqua'),
+    salt_pct: getSec('chiusura-sale'), yeast_pct: getSec('chiusura-lievito'),
+    malto_pct: getSec('malto'), olio_pct: getSec('olio'), carbone_pct: recipe.carbone_pct || 0,
+    extra_ingredients: recipe.extra_ingredients || [],
+    sort_order: recipe.sort_order || 0,
+  };
+  try {
+    await api('PUT', `/api/recipes/${recipe.id}`, payload);
+    const freshRecipe = await api('GET', `/api/recipes/${recipe.id}`);
+    // Update allRecipes cache
+    const idx = allRecipes.findIndex(r => r.id === recipe.id);
+    if (idx !== -1) allRecipes[idx] = { ...allRecipes[idx], ...freshRecipe };
+    details.innerHTML = recipeDetailsHTML(freshRecipe, false);
+    wireRecipeDetailViewMode(details, freshRecipe);
+    onParamChange(freshRecipe.id, freshRecipe);
+    toast('Parametri salvati!', 'success');
+  } catch (e) {
+    toast('Errore salvataggio', 'error');
+  }
 }
 
 // ── Recipe Modal ──────────────────────────────────────────────────────────────
@@ -853,8 +932,8 @@ function renderExportModalBody(type) {
   const body = document.getElementById('modal-export-body');
   const typeSelector = `
     <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
-      ${['recipes','ingredients','backup'].map(t => {
-        const labels = { recipes: '🍕 Ricette', ingredients: '🥫 Libreria Ingredienti', backup: '💾 Backup completo' };
+      ${['recipes','variants','ingredients','backup'].map(t => {
+        const labels = { recipes: '🍕 Ricette', variants: '🍕 Varianti Pizza', ingredients: '🥫 Libreria Ingredienti', backup: '💾 Backup completo' };
         return `<button class="btn btn-sm export-type-btn${type === t ? ' btn-primary' : ' btn-ghost'}" data-type="${t}">${labels[t]}</button>`;
       }).join('')}
     </div>`;
@@ -876,6 +955,33 @@ function renderExportModalBody(type) {
         </div>
         <div class="import-recipe-list">${items}</div>`;
     }
+  } else if (type === 'variants') {
+    if (!allVariants.length) {
+      inner = `<p style="color:var(--text-3);padding:4px 0">Nessuna variante da esportare.</p>`;
+    } else {
+      const byRecipe = {};
+      allVariants.forEach(v => {
+        if (!byRecipe[v.recipe_id]) byRecipe[v.recipe_id] = { name: v.recipe_name, variants: [] };
+        byRecipe[v.recipe_id].variants.push(v);
+      });
+      const groups = Object.values(byRecipe).map(g => {
+        const items = g.variants.map(v => `
+          <label class="import-recipe-item" style="padding-left:24px">
+            <input type="checkbox" class="export-variant-check" value="${v.id}" checked>
+            <span>${v.name}</span>
+          </label>`).join('');
+        return `<div style="margin-bottom:8px">
+          <div style="font-size:.82rem;font-weight:700;color:var(--text-2);margin-bottom:4px">${getRecipeEmoji(g.name)} ${g.name}</div>
+          ${items}
+        </div>`;
+      }).join('');
+      inner = `
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn btn-ghost btn-sm" id="export-sel-all">Seleziona tutto</button>
+          <button class="btn btn-ghost btn-sm" id="export-desel-all">Deseleziona tutto</button>
+        </div>
+        <div class="import-recipe-list">${groups}</div>`;
+    }
   } else if (type === 'ingredients') {
     inner = `<p style="color:var(--text-2);font-size:.88rem">Esporta l'intera libreria ingredienti con i valori nutrizionali.</p>`;
   } else {
@@ -887,12 +993,13 @@ function renderExportModalBody(type) {
   body.querySelectorAll('.export-type-btn').forEach(btn => {
     btn.addEventListener('click', () => renderExportModalBody(btn.dataset.type));
   });
-  if (type === 'recipes') {
+  if (type === 'recipes' || type === 'variants') {
+    const cls = type === 'variants' ? '.export-variant-check' : '.export-recipe-check';
     document.getElementById('export-sel-all')?.addEventListener('click', () => {
-      document.querySelectorAll('.export-recipe-check').forEach(cb => { cb.checked = true; });
+      document.querySelectorAll(cls).forEach(cb => { cb.checked = true; });
     });
     document.getElementById('export-desel-all')?.addEventListener('click', () => {
-      document.querySelectorAll('.export-recipe-check').forEach(cb => { cb.checked = false; });
+      document.querySelectorAll(cls).forEach(cb => { cb.checked = false; });
     });
   }
 }
@@ -939,8 +1046,10 @@ async function triggerImport() {
 function showImportPreview(preview) {
   const recipes = preview.recipes || [];
   const ingredients = preview.ingredients || [];
+  const variants = preview.variants || [];
   const n = recipes.length;
   const ni = ingredients.length;
+  const nv = variants.length;
 
   const recipeItems = recipes.map(r => `
     <label class="import-recipe-item">
@@ -954,20 +1063,30 @@ function showImportPreview(preview) {
       <span>${i.name}${i.already_exists ? ' <span class="import-exists-badge">già presente</span>' : ''}</span>
     </label>`).join('');
 
+  const variantItems = variants.map(v => `
+    <label class="import-recipe-item">
+      <input type="checkbox" class="import-variant-check" value="${v.recipe_name}::${v.name}" checked>
+      <span><span style="color:var(--text-3);font-size:.82rem">${v.recipe_name} / </span>${v.name}${v.already_exists ? ' <span class="import-exists-badge">già presente</span>' : ''}</span>
+    </label>`).join('');
+
   const recipesSection = n > 0 ? `
     <p style="font-size:.82rem;font-weight:700;color:var(--text-2);margin-bottom:6px">Ricette (${n})</p>
     <div class="import-recipe-list">${recipeItems}</div>` : '';
+
+  const variantsSection = nv > 0 ? `
+    <p style="font-size:.82rem;font-weight:700;color:var(--text-2);margin:12px 0 6px">Varianti pizza (${nv})</p>
+    <div class="import-recipe-list">${variantItems}</div>` : '';
 
   const ingredientsSection = ni > 0 ? `
     <p style="font-size:.82rem;font-weight:700;color:var(--text-2);margin:12px 0 6px">Ingredienti libreria (${ni})</p>
     <div class="import-recipe-list">${ingItems}</div>` : '';
 
-  const emptyMsg = n === 0 && ni === 0
+  const emptyMsg = n === 0 && ni === 0 && nv === 0
     ? `<p style="color:var(--text-3)">Nessun dato trovato nel file.</p>` : '';
 
   document.getElementById('modal-import-body').innerHTML = `
     <div style="padding:4px">
-      ${emptyMsg}${recipesSection}${ingredientsSection}
+      ${emptyMsg}${recipesSection}${variantsSection}${ingredientsSection}
       ${n > 0 ? `<label class="import-recipe-item" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
         <input type="checkbox" id="import-reset-check">
         <span style="font-size:.82rem;color:var(--text-3)">Sovrascrivi ricette già presenti</span>
@@ -983,7 +1102,8 @@ function showImportPreview(preview) {
 async function doImportSelected() {
   const selectedRecipes = Array.from(document.querySelectorAll('.import-recipe-check:checked')).map(cb => cb.value);
   const selectedIngredients = Array.from(document.querySelectorAll('.import-ingredient-check:checked')).map(cb => cb.value);
-  if (!selectedRecipes.length && !selectedIngredients.length) {
+  const selectedVariants = Array.from(document.querySelectorAll('.import-variant-check:checked')).map(cb => cb.value);
+  if (!selectedRecipes.length && !selectedIngredients.length && !selectedVariants.length) {
     toast('Seleziona almeno un elemento', 'error'); return;
   }
 
@@ -997,6 +1117,7 @@ async function doImportSelected() {
     const params = new URLSearchParams({ reset });
     if (selectedRecipes.length) params.set('only', selectedRecipes.join(','));
     if (selectedIngredients.length) params.set('only_ingredients', selectedIngredients.join(','));
+    if (selectedVariants.length) params.set('only_variants', selectedVariants.join(','));
     const resp = await fetch(`/api/import-excel?${params}`, { method: 'POST', body: formData });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const res = await resp.json();
@@ -1079,6 +1200,7 @@ function renderVariantiTab() {
 
 async function renderVariantsForRecipe(recipeId) {
   if (!recipeId) return;
+  const scrollY = window.scrollY;
   const content = document.getElementById('varianti-content');
   content.innerHTML = `<div style="padding:20px; color:var(--text-3); font-size:.85rem">Caricamento...</div>`;
   try {
@@ -1102,6 +1224,8 @@ async function renderVariantsForRecipe(recipeId) {
     content.querySelectorAll('.variant-toggle').forEach(vBtn => {
       vBtn.addEventListener('click', () => vBtn.nextElementSibling.classList.toggle('open'));
     });
+
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)));
   } catch (e) {
     content.innerHTML = `<p style="color:var(--red); padding:8px">Errore caricamento varianti.</p>`;
   }
@@ -1479,6 +1603,7 @@ async function saveIngredient() {
   };
 
   try {
+    const scrollY = window.scrollY;
     if (id) {
       await api('PUT', `/api/ingredients/${id}`, body);
     } else {
@@ -1487,6 +1612,7 @@ async function saveIngredient() {
     closeModal('modal-ingredient');
     allIngredients = await api('GET', '/api/ingredients');
     renderMenuIngredienti();
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)));
     toast('Ingrediente salvato!', 'success');
   } catch (e) {
     toast('Errore salvataggio ingrediente', 'error');
@@ -1620,12 +1746,13 @@ function buildPartyRecipeCard(recipe, state) {
         <div class="params-grid" style="grid-template-columns:repeat(3,1fr)">
           <div class="param-field"><label>N. Palline</label><input type="number" class="party-param" data-param="pieces" min="1" value="${state.pieces}"></div>
           <div class="param-field"><label>Peso (g)</label><input type="number" class="party-param" data-param="ball_weight" min="50" step="5" value="${state.ball_weight}"></div>
-          <div class="param-field"><label>Idratazione (%)</label><input type="number" class="party-param" data-param="hydration" min="50" max="100" step="1" value="${state.hydration}"></div>
-          <div class="param-field"><label>Sale (%)</label><input type="number" class="party-param" data-param="salt" min="0" max="5" step="0.1" value="${state.salt}"></div>
-          <div class="param-field"><label>Lievito (%)</label><input type="number" class="party-param" data-param="yeast" min="0" max="5" step="0.01" value="${state.yeast}"></div>
-          <div class="param-field"><label>BIGA (%)</label><input type="number" class="party-param" data-param="biga" min="0" max="100" step="5" value="${state.biga}"></div>
-          <div class="param-field"><label>POOLISH (%)</label><input type="number" class="party-param" data-param="poolish" min="0" max="100" step="5" value="${state.poolish}"></div>
-          <div class="param-field"><label>AUTOLISI (%)</label><input type="number" class="party-param" data-param="autolisi" min="0" max="100" step="5" value="${state.autolisi}"></div>
+          <div class="param-field"><label>Idratazione (%)</label><span class="param-readonly-val">${state.hydration}</span></div>
+          <div class="param-field"><label>Sale (%)</label><span class="param-readonly-val">${state.salt}</span></div>
+          <div class="param-field"><label>Lievito (%)</label><span class="param-readonly-val">${state.yeast}</span></div>
+          <div class="param-field" style="grid-column:span 1"></div>
+          <div class="param-field"><label>BIGA (%)</label><span class="param-readonly-val">${state.biga}</span></div>
+          <div class="param-field"><label>POOLISH (%)</label><span class="param-readonly-val">${state.poolish}</span></div>
+          <div class="param-field"><label>AUTOLISI (%)</label><span class="param-readonly-val">${state.autolisi}</span></div>
         </div>
         <div class="piece-warning" id="party-warn-${recipe.id}" style="display:none"></div>
       </div>
@@ -1653,6 +1780,8 @@ function wirePartyRecipeCard(card, recipeId) {
       schedulePartyCalc();
     });
   });
+  // Read-only params (hydration, salt, yeast, biga, poolish, autolisi) come from recipe state
+  // and are displayed as spans — no listener needed
   card.querySelector('.party-portion-grid').addEventListener('click', e => {
     const btn = e.target.closest('.portion-btn');
     if (!btn) return;
@@ -1974,6 +2103,14 @@ document.getElementById('btn-export-confirm').addEventListener('click', () => {
     closeModal('modal-export');
     return;
   }
+  if (type === 'variants') {
+    const checked = document.querySelectorAll('.export-variant-check:checked');
+    const ids = Array.from(checked).map(cb => cb.value).join(',');
+    if (!ids) { toast('Seleziona almeno una variante', 'error'); return; }
+    downloadFile(`/api/export-excel?type=variants&variant_ids=${ids}`, 'varianti_export.xlsx');
+    closeModal('modal-export');
+    return;
+  }
   const checked = document.querySelectorAll('.export-recipe-check:checked');
   const ids = Array.from(checked).map(cb => cb.value).join(',');
   if (!ids) { toast('Seleziona almeno una ricetta', 'error'); return; }
@@ -2090,8 +2227,8 @@ const TIMING_DATA = {
   },
 };
 
-let plannerState = { recipe: null, day: null, time: null, season: null };
-let plannerTimeline = [];
+let plannerState = { recipes: [], day: null, time: null, season: null };
+let plannerTimelines = {}; // recipeKey → events[]
 let googleTokenClient = null;
 let googleAccessToken = null;
 let plannerInited = false;
@@ -2108,12 +2245,12 @@ function partyRecipeToPlanner(recipeName) {
 function savePartyForPlanner() {
   const activeRecipes = allRecipes.filter(r => partyState[r.id]?.active);
   if (!activeRecipes.length) return;
-  const recipe = activeRecipes[0];
-  const state = partyState[recipe.id];
+  const firstRecipe = activeRecipes[0];
+  const state = partyState[firstRecipe.id];
+  const recipeKeys = activeRecipes.map(r => partyRecipeToPlanner(r.name)).filter(Boolean);
   savedPartyConfig = {
-    recipeName: recipe.name,
-    recipeKey: partyRecipeToPlanner(recipe.name),
-    pieces: state.pieces || recipe.default_pieces,
+    recipeKeys,
+    pieces: state.pieces || firstRecipe.default_pieces,
   };
   // switch al tab planner
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2145,20 +2282,25 @@ function initPlanner() {
   const autoSeason = (month >= 4 && month <= 10) ? 'estate' : 'inverno';
   selectPlannerSeason(autoSeason, true);
 
-  // Se arriva da "Salva Pizza Party", pre-seleziona la ricetta
-  if (savedPartyConfig?.recipeKey) {
-    selectPlannerRecipe(savedPartyConfig.recipeKey);
+  // Se arriva da "Salva Pizza Party", pre-seleziona tutte le ricette attive
+  if (savedPartyConfig?.recipeKeys?.length) {
+    plannerState.recipes = [...savedPartyConfig.recipeKeys];
+    document.querySelectorAll('.planner-recipe-card').forEach(c => {
+      c.classList.toggle('active', plannerState.recipes.includes(c.dataset.key));
+    });
+    tryCalcPlannerTimeline();
   }
 }
 
 function renderPlannerRecipeCards() {
   const el = document.getElementById('planner-recipe-cards');
   el.innerHTML = Object.entries(TIMING_DATA).map(([key, r]) => {
-    const fromParty = savedPartyConfig?.recipeKey === key;
+    const fromParty = savedPartyConfig?.recipeKeys?.includes(key);
+    const isActive = fromParty || plannerState.recipes.includes(key);
     const desc = fromParty
       ? `🍕 Dal Pizza Party — ${savedPartyConfig.pieces} pizze`
       : r.serviceLabel;
-    return `<div class="planner-recipe-card${fromParty ? ' active' : ''}" id="planner-rc-${key}" data-key="${key}">
+    return `<div class="planner-recipe-card${isActive ? ' active' : ''}" id="planner-rc-${key}" data-key="${key}">
       <span class="planner-recipe-emoji">${r.emoji}</span>
       <div>
         <div class="planner-recipe-name">${r.name}</div>
@@ -2167,7 +2309,7 @@ function renderPlannerRecipeCards() {
     </div>`;
   }).join('');
   el.querySelectorAll('.planner-recipe-card').forEach(card => {
-    card.addEventListener('click', () => selectPlannerRecipe(card.dataset.key));
+    card.addEventListener('click', () => togglePlannerRecipe(card.dataset.key));
   });
 }
 
@@ -2199,10 +2341,16 @@ function renderPlannerTimePills() {
   });
 }
 
-function selectPlannerRecipe(key) {
-  plannerState.recipe = key;
-  document.querySelectorAll('.planner-recipe-card').forEach(c => c.classList.remove('active'));
-  document.getElementById('planner-rc-' + key).classList.add('active');
+function togglePlannerRecipe(key) {
+  const idx = plannerState.recipes.indexOf(key);
+  if (idx >= 0) {
+    plannerState.recipes.splice(idx, 1);
+  } else {
+    plannerState.recipes.push(key);
+  }
+  document.querySelectorAll('.planner-recipe-card').forEach(c => {
+    c.classList.toggle('active', plannerState.recipes.includes(c.dataset.key));
+  });
   tryCalcPlannerTimeline();
 }
 
@@ -2244,19 +2392,22 @@ function selectPlannerSeason(season, silent = false) {
 }
 
 function tryCalcPlannerTimeline() {
-  const { recipe, day, time, season } = plannerState;
+  const { recipes, day, time, season } = plannerState;
   const empty = document.getElementById('planner-timeline-empty');
   const tl = document.getElementById('planner-timeline');
   const calSection = document.getElementById('planner-calendar-section');
-  if (!recipe || !day || !time || !season) {
+  if (!recipes.length || !day || !time || !season) {
     empty.style.display = '';
     tl.style.display = 'none';
     calSection.style.display = 'none';
     return;
   }
   const serviceDateTime = new Date(`${day}T${time}:00`);
-  plannerTimeline = calcPlannerTimeline(recipe, serviceDateTime, season);
-  renderPlannerTimeline(plannerTimeline, recipe);
+  plannerTimelines = {};
+  for (const key of recipes) {
+    plannerTimelines[key] = calcPlannerTimeline(key, serviceDateTime, season);
+  }
+  renderPlannerTimeline(plannerTimelines);
   empty.style.display = 'none';
   tl.style.display = '';
   calSection.style.display = '';
@@ -2311,36 +2462,40 @@ function fmtDay(date) {
   return date.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-function renderPlannerTimeline(events, recipeKey) {
+function renderPlannerTimeline(timelines) {
   const el = document.getElementById('planner-timeline');
-  const recipe = TIMING_DATA[recipeKey];
-  let lastDay = null;
-  let rows = '';
-  for (const ev of events) {
-    const day = ev.start.toDateString();
-    if (day !== lastDay) {
-      rows += `<tr><td colspan="3" style="padding:8px 12px 4px;font-size:.72rem;font-weight:700;color:var(--text-3);text-transform:uppercase;background:var(--bg-hover)">${fmtDay(ev.start)}</td></tr>`;
-      lastDay = day;
+  const headerColors = { focaccia: '#2e7d4e', napoletana: '#0097a7', brioche: '#c8920a' };
+  const sections = Object.entries(timelines).map(([recipeKey, events]) => {
+    const recipe = TIMING_DATA[recipeKey];
+    const bg = headerColors[recipeKey] || 'var(--primary)';
+    let lastDay = null;
+    let rows = '';
+    for (const ev of events) {
+      const day = ev.start.toDateString();
+      if (day !== lastDay) {
+        rows += `<tr><td colspan="3" style="padding:8px 12px 4px;font-size:.72rem;font-weight:700;color:var(--text-3);text-transform:uppercase;background:var(--bg-hover)">${fmtDay(ev.start)}</td></tr>`;
+        lastDay = day;
+      }
+      const serviceClass = ev.isService ? 'timeline-service' : '';
+      const midnightBadge = ev.isMidnightSplit ? '<span class="timeline-badge-midnight">🌙 passa mezzanotte</span>' : '';
+      rows += `<tr class="${serviceClass}">
+        <td class="timeline-time">${fmtTime(ev.start)}</td>
+        <td><div>${ev.name}${midnightBadge}</div>${ev.note ? `<div class="timeline-note">${ev.note}</div>` : ''}</td>
+        <td class="timeline-time" style="color:var(--text-3)">${fmtTime(ev.end)}</td>
+      </tr>`;
     }
-    const timeStr = `${fmtTime(ev.start)}${ev.isService && recipe.serviceEventDuration > 0 ? ' → ' + fmtTime(ev.end) : ev.isService ? '' : ' → ' + fmtTime(ev.end)}`;
-    const serviceClass = ev.isService ? 'timeline-service' : '';
-    const midnightBadge = ev.isMidnightSplit ? '<span class="timeline-badge-midnight">🌙 passa mezzanotte</span>' : '';
-    rows += `<tr class="${serviceClass}">
-      <td class="timeline-time">${fmtTime(ev.start)}</td>
-      <td><div>${ev.name}${midnightBadge}</div>${ev.note ? `<div class="timeline-note">${ev.note}</div>` : ''}</td>
-      <td class="timeline-time" style="color:var(--text-3)">${fmtTime(ev.end)}</td>
-    </tr>`;
-  }
-  el.innerHTML = `
-    <div class="planner-timeline-header">
-      <span>Timeline — ${recipe.name}</span>
-    </div>
-    <div style="overflow-x:auto">
-      <table class="timeline-table">
-        <thead><tr><th>Inizio</th><th>Step</th><th>Fine</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+    return `
+      <div class="planner-timeline-header" style="background:${bg};color:#fff">
+        <span>${recipe.emoji} ${recipe.name}</span>
+      </div>
+      <div style="overflow-x:auto;margin-bottom:20px">
+        <table class="timeline-table">
+          <thead><tr><th>Inizio</th><th>Step</th><th>Fine</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+  el.innerHTML = sections;
 }
 
 function initGoogleAuth() {
@@ -2370,31 +2525,38 @@ function connectGoogleCalendar() {
   if (googleTokenClient) googleTokenClient.requestAccessToken();
 }
 
-function formatPlannerText(events, recipeKey) {
-  const recipe = TIMING_DATA[recipeKey];
-  const lines = [`📅 PIANIFICATORE IMPASTI — ${recipe.name}`, ''];
-  let lastDay = null;
-  for (const ev of events) {
-    const day = ev.start.toDateString();
-    if (day !== lastDay) {
-      lines.push(`── ${fmtDay(ev.start).toUpperCase()} ──`);
-      lastDay = day;
+function formatPlannerText(timelines) {
+  const lines = ['📅 PIANIFICATORE IMPASTI', ''];
+  for (const [recipeKey, events] of Object.entries(timelines)) {
+    const recipe = TIMING_DATA[recipeKey];
+    lines.push(`── ${recipe.emoji} ${recipe.name.toUpperCase()} ──`);
+    let lastDay = null;
+    for (const ev of events) {
+      const day = ev.start.toDateString();
+      if (day !== lastDay) {
+        lines.push(`  ${fmtDay(ev.start).toUpperCase()}`);
+        lastDay = day;
+      }
+      const marker = ev.isService ? '🍕' : '•';
+      const timeRange = `${fmtTime(ev.start)} → ${fmtTime(ev.end)}`;
+      lines.push(`  ${marker} ${timeRange}  ${ev.name}`);
+      if (ev.note) lines.push(`     ${ev.note}`);
     }
-    const marker = ev.isService ? '🍕' : '•';
-    const timeRange = `${fmtTime(ev.start)} → ${fmtTime(ev.end)}`;
-    lines.push(`${marker} ${timeRange}  ${ev.name}`);
-    if (ev.note) lines.push(`   ${ev.note}`);
+    lines.push('');
   }
   return lines.join('\n');
 }
 
 async function sharePlannerTimeline() {
-  if (!plannerTimeline.length || !plannerState.recipe) return;
-  const text = formatPlannerText(plannerTimeline, plannerState.recipe);
-  const recipe = TIMING_DATA[plannerState.recipe];
+  if (!Object.keys(plannerTimelines).length || !plannerState.recipes.length) return;
+  const text = formatPlannerText(plannerTimelines);
+  const firstKey = plannerState.recipes[0];
+  const title = plannerState.recipes.length > 1
+    ? `📅 Pianificatore Impasti (${plannerState.recipes.length} ricette)`
+    : `📅 ${TIMING_DATA[firstKey].name}`;
   if (navigator.share) {
     try {
-      await navigator.share({ title: `📅 ${recipe.name}`, text });
+      await navigator.share({ title, text });
     } catch (e) {
       if (e.name !== 'AbortError') toast('Condivisione non riuscita', 'error');
     }
@@ -2403,37 +2565,38 @@ async function sharePlannerTimeline() {
       await navigator.clipboard.writeText(text);
       toast('Timeline copiata negli appunti!');
     } catch (e) {
-      window.open(`mailto:?subject=${encodeURIComponent('📅 ' + recipe.name)}&body=${encodeURIComponent(text)}`);
+      window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`);
     }
   }
 }
 
 async function createCalendarEvents() {
-  if (!googleAccessToken || !plannerTimeline.length) return;
-  const recipeKey = plannerState.recipe;
-  const recipe = TIMING_DATA[recipeKey];
+  if (!googleAccessToken || !Object.keys(plannerTimelines).length) return;
   const btn = document.getElementById('planner-btn-create');
   btn.disabled = true;
   btn.textContent = 'Creazione in corso...';
 
   let created = 0, errors = 0;
-  for (const ev of plannerTimeline) {
-    if (ev.isService && recipe.serviceEventDuration === 0) continue; // skip zero-duration service markers
-    const body = {
-      summary: `${recipe.emoji} ${ev.name}`,
-      description: ev.note || '',
-      start: { dateTime: ev.start.toISOString(), timeZone: 'Europe/Rome' },
-      end:   { dateTime: ev.end.toISOString(),   timeZone: 'Europe/Rome' },
-      colorId: recipe.calendarColorId,
-    };
-    try {
-      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) created++; else errors++;
-    } catch { errors++; }
+  for (const [recipeKey, events] of Object.entries(plannerTimelines)) {
+    const recipe = TIMING_DATA[recipeKey];
+    for (const ev of events) {
+      if (ev.isService && recipe.serviceEventDuration === 0) continue;
+      const body = {
+        summary: `${recipe.emoji} ${ev.name}`,
+        description: ev.note || '',
+        start: { dateTime: ev.start.toISOString(), timeZone: 'Europe/Rome' },
+        end:   { dateTime: ev.end.toISOString(),   timeZone: 'Europe/Rome' },
+        colorId: recipe.calendarColorId,
+      };
+      try {
+        const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) created++; else errors++;
+      } catch { errors++; }
+    }
   }
 
   btn.disabled = false;
