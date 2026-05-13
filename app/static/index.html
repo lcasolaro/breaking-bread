@@ -12,9 +12,10 @@
   <span class="logo">Breaking Bread</span>
   <nav>
     <button class="tab-btn active" data-tab="ricette">Ricette</button>
-    <button class="tab-btn" data-tab="menu">Menù Pizze</button>
+    <button class="tab-btn" data-tab="menu">Menù Prodotti</button>
     <button class="tab-btn" data-tab="party">Pizza Party</button>
     <button class="tab-btn" data-tab="planner">📅 Pianifica</button>
+    <button class="tab-btn" data-tab="impostazioni">⚙️ Impostazioni</button>
   </nav>
   <div class="header-actions">
     <button class="btn btn-secondary btn-sm" id="btn-export">Esporta</button>
@@ -33,29 +34,48 @@
     <div class="recipes-grid" id="recipes-grid"></div>
   </div>
 
-  <!-- ── Tab: Menù Pizze ──────────────────────────────────────────────── -->
+  <!-- ── Tab: Menù Prodotti ──────────────────────────────────────────── -->
   <div class="tab-pane" id="tab-menu">
     <div class="section-header">
-      <h1 class="section-title">Menù Pizze</h1>
+      <h1 class="section-title">Menù Prodotti</h1>
     </div>
-    <div class="menu-subnav">
-      <button class="subnav-btn active" data-view="pizze">Pizze</button>
-      <button class="subnav-btn" data-view="ingredienti">Ingredienti</button>
-    </div>
-    <div class="menu-view" id="menu-view-pizze">
-      <div class="varianti-layout">
-        <div class="varianti-recipe-selector" id="varianti-recipe-selector">
-          <!-- Recipe pills inserted by JS -->
-        </div>
-        <div id="varianti-content">
-          <div class="empty-state">
-            <p>Seleziona una ricetta per vedere le varianti.</p>
-          </div>
+    <div class="varianti-layout">
+      <div class="varianti-recipe-selector" id="varianti-recipe-selector">
+        <!-- Recipe pills inserted by JS -->
+      </div>
+      <div id="varianti-content">
+        <div class="empty-state">
+          <p>Seleziona una ricetta per vedere le varianti.</p>
         </div>
       </div>
     </div>
-    <div class="menu-view" id="menu-view-ingredienti" style="display:none">
-      <!-- Ingredient library rendered by JS -->
+  </div>
+
+  <!-- ── Tab: Impostazioni ─────────────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-impostazioni">
+    <div class="section-header">
+      <h1 class="section-title">Impostazioni</h1>
+    </div>
+    <!-- Libreria Ingredienti -->
+    <div class="settings-section">
+      <div class="settings-section-header">
+        <h2 class="settings-section-title">Libreria Ingredienti</h2>
+        <button class="btn btn-primary btn-sm" id="btn-new-ingredient">+ Nuovo Ingrediente</button>
+      </div>
+      <div id="impostazioni-ingredienti">
+        <!-- Ingredient library rendered by JS -->
+      </div>
+    </div>
+    <!-- Tempistiche Pianificatore -->
+    <div class="settings-section">
+      <div class="settings-section-header">
+        <h2 class="settings-section-title">Tempistiche Pianificatore</h2>
+      </div>
+      <p class="settings-section-desc">Modifica i tempi (in minuti) usati dal pianificatore per calcolare la timeline. Estate = aprile–ottobre.</p>
+      <div id="impostazioni-timing">
+        <!-- Timing templates rendered by JS -->
+        <div class="empty-state"><p>Caricamento...</p></div>
+      </div>
     </div>
   </div>
 
@@ -173,9 +193,18 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="recipe-id-field">
-      <div class="form-group">
-        <label>Nome Ricetta</label>
-        <input type="text" id="rf-name" placeholder="es. Pizza Napoletana">
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Nome Ricetta</label>
+          <input type="text" id="rf-name" placeholder="es. Pizza Napoletana">
+        </div>
+        <div class="form-group">
+          <label>Tipo ricetta</label>
+          <select id="rf-type">
+            <option value="pizza">🍕 Pizza / Focaccia</option>
+            <option value="other">🍞 Altro (Brioche, Pane…)</option>
+          </select>
+        </div>
       </div>
       <div class="form-group">
         <label>Descrizione (opzionale)</label>
@@ -189,36 +218,79 @@
           <div class="form-group"><label>Peso panetto (g)</label><input type="number" id="rf-ball" min="50" step="5" value="255"></div>
           <div class="form-group"><label>Idratazione (%)</label><input type="number" id="rf-hydration" min="40" max="100" step="1" value="65"></div>
         </div>
-        <div class="form-row-3">
+        <div id="rf-biga-row" class="form-row-3">
           <div class="form-group"><label>BIGA (%)</label><input type="number" id="rf-biga" min="0" max="100" step="5" value="0"></div>
-          <div class="form-group"><label>POOLISH (%)</label><input type="number" id="rf-poolish" min="0" max="100" step="5" value="0"></div>
-          <div class="form-group"><label>AUTOLISI (%)</label><input type="number" id="rf-autolisi" min="0" max="100" step="5" value="0"></div>
+          <div class="form-group"><label>Poolish/Yudane (%)</label><input type="number" id="rf-poolish" min="0" max="100" step="5" value="0"></div>
+          <div class="form-group" id="rf-autolisi-group"><label>AUTOLISI (%)</label><input type="number" id="rf-autolisi" min="0" max="100" step="5" value="0"></div>
         </div>
         <div class="form-row-3">
-          <div class="form-group"><label>Idrat. BIGA (%)</label><input type="number" id="rf-biga-hydration" min="20" max="80" step="1" value="44"></div>
-          <div class="form-group"><label>Lievito BIGA (% far. BIGA)</label><input type="number" id="rf-biga-yeast" min="0" max="5" step="0.1" value="0.5"></div>
-          <div class="form-group"><label>Lievito POOLISH (% far. POOLISH)</label><input type="number" id="rf-poolish-yeast" min="0" max="5" step="0.05" value="0.1"></div>
+          <div class="form-group" id="rf-biga-hydration-group"><label>Idrat. BIGA (%)</label><input type="number" id="rf-biga-hydration" min="20" max="80" step="1" value="44"></div>
+          <div class="form-group" id="rf-biga-yeast-group"><label>Lievito BIGA (% far. BIGA)</label><input type="number" id="rf-biga-yeast" min="0" max="5" step="0.1" value="0.5"></div>
+          <div class="form-group"><label>Lievito Poolish/Yudane (% far.)</label><input type="number" id="rf-poolish-yeast" min="0" max="5" step="0.05" value="0.1"></div>
         </div>
-        <div class="form-row-3">
+        <div class="form-row-3" id="rf-autolisi-water-row">
           <div class="form-group"><label>Acqua AUTOLISI (%, 0=idrat.)</label><input type="number" id="rf-autolisi-water" min="0" max="100" step="1" value="0"></div>
-          <div class="form-group"><!-- spacer --></div>
-          <div class="form-group"><!-- spacer --></div>
+          <div class="form-group"></div>
+          <div class="form-group"></div>
         </div>
         <div class="params-section-label" style="margin-top:8px">Chiusura Impasto</div>
         <div class="form-row-3">
           <div class="form-group"><label>Sale (% far. tot.)</label><input type="number" id="rf-salt" min="0" max="5" step="0.1" value="2.5"></div>
           <div class="form-group"><label>Lievito tot. (% far. tot.)</label><input type="number" id="rf-yeast" min="0" max="5" step="0.01" value="1.0"></div>
-          <div class="form-group"><!-- spacer --></div>
+          <div class="form-group"></div>
         </div>
         <div class="form-row-3">
           <div class="form-group"><label>Malto diastasico (% biga+poolish)</label><input type="number" id="rf-malto" min="0" max="5" step="0.05" value="0"></div>
           <div class="form-group"><label>Olio (% far. tot.)</label><input type="number" id="rf-olio" min="0" max="10" step="0.5" value="0"></div>
-          <div class="form-group"><!-- spacer --></div>
+          <div class="form-group"></div>
         </div>
+
+        <!-- Flour mix per section -->
+        <details id="rf-flour-mix-details" style="margin-top:12px">
+          <summary class="params-section-label" style="cursor:pointer;user-select:none">🌾 Mix Farine per Sezione <span style="font-size:.75rem;font-weight:400;color:var(--text-3)">(opzionale — default: 100% grano tenero)</span></summary>
+          <div style="margin-top:8px">
+            <div class="flour-mix-row" id="rf-flour-biga-row">
+              <div class="flour-mix-label">BIGA</div>
+              <div class="flour-mix-inputs">
+                <div class="form-group"><label>Grano tenero (%)</label><input type="number" id="rf-fm-biga-gt" min="0" max="100" step="5" value="100"></div>
+                <div class="form-group"><label>Integrale (%)</label><input type="number" id="rf-fm-biga-int" min="0" max="100" step="5" value="0"></div>
+                <div class="form-group"><label>Speciale (%)</label><input type="number" id="rf-fm-biga-spec" min="0" max="100" step="5" value="0"></div>
+                <span class="flour-mix-sum" id="rf-fm-biga-sum"></span>
+              </div>
+            </div>
+            <div class="flour-mix-row">
+              <div class="flour-mix-label">Poolish/Yudane</div>
+              <div class="flour-mix-inputs">
+                <div class="form-group"><label>Grano tenero (%)</label><input type="number" id="rf-fm-poolish-gt" min="0" max="100" step="5" value="100"></div>
+                <div class="form-group"><label>Integrale (%)</label><input type="number" id="rf-fm-poolish-int" min="0" max="100" step="5" value="0"></div>
+                <div class="form-group"><label>Speciale (%)</label><input type="number" id="rf-fm-poolish-spec" min="0" max="100" step="5" value="0"></div>
+                <span class="flour-mix-sum" id="rf-fm-poolish-sum"></span>
+              </div>
+            </div>
+            <div class="flour-mix-row" id="rf-flour-autolisi-row">
+              <div class="flour-mix-label">Autolisi</div>
+              <div class="flour-mix-inputs">
+                <div class="form-group"><label>Grano tenero (%)</label><input type="number" id="rf-fm-autolisi-gt" min="0" max="100" step="5" value="100"></div>
+                <div class="form-group"><label>Integrale (%)</label><input type="number" id="rf-fm-autolisi-int" min="0" max="100" step="5" value="0"></div>
+                <div class="form-group"><label>Speciale (%)</label><input type="number" id="rf-fm-autolisi-spec" min="0" max="100" step="5" value="0"></div>
+                <span class="flour-mix-sum" id="rf-fm-autolisi-sum"></span>
+              </div>
+            </div>
+            <div class="flour-mix-row">
+              <div class="flour-mix-label">Chiusura</div>
+              <div class="flour-mix-inputs">
+                <div class="form-group"><label>Grano tenero (%)</label><input type="number" id="rf-fm-chiusura-gt" min="0" max="100" step="5" value="100"></div>
+                <div class="form-group"><label>Integrale (%)</label><input type="number" id="rf-fm-chiusura-int" min="0" max="100" step="5" value="0"></div>
+                <div class="form-group"><label>Speciale (%)</label><input type="number" id="rf-fm-chiusura-spec" min="0" max="100" step="5" value="0"></div>
+                <span class="flour-mix-sum" id="rf-fm-chiusura-sum"></span>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="form-group">
-        <label>Ingredienti aggiuntivi <span class="form-hint" style="display:inline">(in % sulla farina)</span></label>
+        <label>Ingredienti aggiuntivi <span class="form-hint" style="display:inline">(in % sulla farina — es. uova, burro, yogurt)</span></label>
         <div class="extras-list" id="extras-list"></div>
         <button class="btn btn-ghost btn-sm" style="margin-top:8px" id="btn-add-extra">+ Aggiungi Ingrediente</button>
       </div>
@@ -461,6 +533,22 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" id="btn-import-ok" style="display:none">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Nota Ricetta ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-nota">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-nota-title">📋 Nota Ricetta</span>
+      <button class="btn-icon" id="modal-nota-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-nota-body" style="font-size:.88rem;line-height:1.6">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-nota-share">Condividi 📤</button>
+      <button class="btn btn-secondary" id="modal-nota-close2">Chiudi</button>
     </div>
   </div>
 </div>

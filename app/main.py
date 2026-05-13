@@ -13,6 +13,7 @@ from app.importer import import_excel
 app = FastAPI(title="Breaking Bread")
 db.init_db()
 db.seed_ingredients()
+db.seed_timing_templates()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -47,6 +48,8 @@ class RecipeBody(BaseModel):
     extra_ingredients: list = []
     notes: Optional[str] = None
     sort_order: int = 0
+    recipe_type: str = "pizza"
+    flour_mix: Optional[dict] = None
 
 
 @app.get("/api/recipes")
@@ -447,6 +450,24 @@ def list_timing_guides():
 @app.put("/api/timing-guides/{guide_id}")
 def update_timing_guide(guide_id: int, body: TimingBody):
     db.update_timing_guide(guide_id, body.name, body.content)
+    return {"ok": True}
+
+
+# ── Timing Templates ──────────────────────────────────────────────────────────
+
+class TimingTemplateStepsBody(BaseModel):
+    steps: list
+
+
+@app.get("/api/timing-templates")
+def list_timing_templates():
+    return db.get_timing_templates()
+
+
+@app.put("/api/timing-templates/{key}")
+def update_timing_template(key: str, body: TimingTemplateStepsBody):
+    import json as _json
+    db.update_timing_template(key, _json.dumps(body.steps))
     return {"ok": True}
 
 

@@ -4,6 +4,50 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-14 (v6 — Impostazioni, tempistiche editabili, tipi farina, tipi ricetta, nota)
+
+### Tag release
+Versione corrente salvata come tag git `BreakingBreadPizzaTool_R01` prima di questa sessione.
+
+### Tab "⚙️ Impostazioni"
+Nuovo tab nella navigazione principale. Contiene:
+- **Libreria Ingredienti** (spostata dal tab Menù Pizze, che ora si chiama Menù Prodotti)
+- **Tempistiche Pianificatore** editabili (vedi sotto)
+
+### Rinomina "Menù Pizze" → "Menù Prodotti"
+Il tab e il titolo della sezione sono stati aggiornati. La subnav Pizze/Ingredienti è stata rimossa — gli ingredienti sono ora in Impostazioni.
+
+### Tempistiche Pianificatore editabili
+Le tempistiche (`TIMING_DATA`) non sono più costanti JS hardcodate ma vengono salvate nel DB nella nuova tabella `timing_templates` (seeding automatico al primo avvio). Le tempistiche sono ora editabili dalla UI (tab Impostazioni → Tempistiche Pianificatore): si modifica il tempo di ogni step per Inverno/Estate e si salva con `PUT /api/timing-templates/{key}`. I valori aggiornati vengono usati subito dal Pianificatore.
+
+### Rinomina "POOLISH" → "Poolish/Yudane"
+Tutte le label display (dettaglio ricetta, form, pizza party, party results) mostrano ora "Poolish/Yudane". I nomi dei campi DB (`poolish_pct`, `poolish_yeast_pct`) rimangono invariati.
+
+### Tipo ricetta (🍕 Pizza / 🍞 Altro)
+Il form ricetta ha ora un selettore "Tipo ricetta". Quando si sceglie "Altro (Brioche, Pane…)":
+- Il form nasconde le sezioni BIGA e AUTOLISI
+- Il dettaglio ricetta (expand) nasconde le sezioni BIGA e AUTOLISI
+- Rimangono visibili: Poolish/Yudane, Chiusura Impasto, extra ingredienti (in % sulla farina, es. uova, burro, yogurt)
+- Il campo `recipe_type TEXT DEFAULT 'pizza'` è stato aggiunto alla tabella `recipes` via migration inline
+
+### Mix farine per sezione (🌾)
+Il form ricetta include una sezione opzionale collassabile "🌾 Mix Farine per Sezione". Per ciascuna delle 4 fasi (BIGA, Poolish/Yudane, Autolisi, Chiusura) si possono specificare le percentuali di:
+- Grano tenero %
+- Integrale %
+- Speciale %
+Con validazione visiva se la somma ≠ 100%. Nel dettaglio ricetta espanso, ogni sezione mostra un badge con il mix impostato (se non tutto grano tenero). Il campo `flour_mix TEXT` è stato aggiunto alla tabella `recipes` via migration inline, salvato come JSON.
+
+### Nota ricetta (📋)
+Nuovo pulsante `📋` nell'header di ogni recipe card. Apre una modale con i quantitativi calcolati dell'impasto suddivisi per fase, basati sui parametri della ricetta al numero di panetti di default:
+- BIGA: farina, acqua, lievito (con dettaglio flour_mix se presente)
+- Poolish/Yudane: farina, acqua, lievito
+- Autolisi: farina, acqua
+- Chiusura: farina rimanente, acqua, sale, lievito, olio, extra ingredienti
+- Totale impasto
+Pulsante "Condividi 📤": usa `navigator.share` su iOS, clipboard su desktop.
+
+---
+
 ## 2026-05-11 (v5 — bug fix + varianti export/import + planner multi-ricetta)
 
 ### Fix lookup 🔍 OpenFoodFacts

@@ -80,6 +80,19 @@ def init_db():
                 sort_order INTEGER DEFAULT 0
             );
 
+            CREATE TABLE IF NOT EXISTS timing_templates (
+                id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+                key                    TEXT NOT NULL UNIQUE,
+                name                   TEXT NOT NULL,
+                emoji                  TEXT,
+                calendar_color_id      TEXT,
+                service_label          TEXT,
+                service_event_name     TEXT,
+                service_event_duration INTEGER DEFAULT 0,
+                steps                  TEXT NOT NULL,
+                sort_order             INTEGER DEFAULT 0
+            );
+
             CREATE TABLE IF NOT EXISTS import_log (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 filename         TEXT NOT NULL,
@@ -100,6 +113,15 @@ def init_db():
         ]:
             try:
                 conn.execute(f"ALTER TABLE recipes ADD COLUMN {col} REAL NOT NULL DEFAULT {default}")
+            except Exception:
+                pass
+
+        for col, coldef in [
+            ("recipe_type", "TEXT DEFAULT 'pizza'"),
+            ("flour_mix",   "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE recipes ADD COLUMN {col} {coldef}")
             except Exception:
                 pass
 
@@ -178,6 +200,17 @@ def get_recipe(recipe_id: int):
         else:
             recipe["extra_ingredients"] = []
 
+        if recipe.get("flour_mix"):
+            try:
+                recipe["flour_mix"] = json.loads(recipe["flour_mix"])
+            except Exception:
+                recipe["flour_mix"] = None
+        else:
+            recipe["flour_mix"] = None
+
+        if not recipe.get("recipe_type"):
+            recipe["recipe_type"] = "pizza"
+
         variants = conn.execute(
             "SELECT * FROM variants WHERE recipe_id = ? ORDER BY sort_order, id",
             (recipe_id,)
@@ -200,6 +233,9 @@ def create_recipe(data: dict) -> int:
     extras = data.get("extra_ingredients", [])
     if isinstance(extras, list):
         extras = json.dumps(extras)
+    flour_mix = data.get("flour_mix")
+    if isinstance(flour_mix, dict):
+        flour_mix = json.dumps(flour_mix)
     with get_conn() as conn:
         cur = conn.execute("""
             INSERT INTO recipes
@@ -207,8 +243,8 @@ def create_recipe(data: dict) -> int:
                hydration_pct, salt_pct, yeast_pct, biga_pct, poolish_pct, autolisi_pct,
                biga_hydration_pct, biga_yeast_pct, poolish_yeast_pct,
                autolisi_water_pct, malto_pct, carbone_pct, olio_pct,
-               extra_ingredients, notes, sort_order)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               extra_ingredients, notes, sort_order, recipe_type, flour_mix)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             data["name"], data.get("description"), data["base_flour_g"],
             data["default_pieces"], data["default_ball_g"],
@@ -218,7 +254,8 @@ def create_recipe(data: dict) -> int:
             data.get("poolish_yeast_pct", 0.1),
             data.get("autolisi_water_pct", 0.0), data.get("malto_pct", 0.0),
             data.get("carbone_pct", 0.0), data.get("olio_pct", 0.0),
-            extras, data.get("notes"), data.get("sort_order", 0)
+            extras, data.get("notes"), data.get("sort_order", 0),
+            data.get("recipe_type", "pizza"), flour_mix
         ))
         return cur.lastrowid
 
@@ -227,6 +264,9 @@ def update_recipe(recipe_id: int, data: dict):
     extras = data.get("extra_ingredients", [])
     if isinstance(extras, list):
         extras = json.dumps(extras)
+    flour_mix = data.get("flour_mix")
+    if isinstance(flour_mix, dict):
+        flour_mix = json.dumps(flour_mix)
     with get_conn() as conn:
         conn.execute("""
             UPDATE recipes SET
@@ -234,7 +274,7 @@ def update_recipe(recipe_id: int, data: dict):
               hydration_pct=?, salt_pct=?, yeast_pct=?, biga_pct=?, poolish_pct=?, autolisi_pct=?,
               biga_hydration_pct=?, biga_yeast_pct=?, poolish_yeast_pct=?,
               autolisi_water_pct=?, malto_pct=?, carbone_pct=?, olio_pct=?,
-              extra_ingredients=?, notes=?, sort_order=?
+              extra_ingredients=?, notes=?, sort_order=?, recipe_type=?, flour_mix=?
             WHERE id=?
         """, (
             data["name"], data.get("description"), data["base_flour_g"],
@@ -246,6 +286,7 @@ def update_recipe(recipe_id: int, data: dict):
             data.get("autolisi_water_pct", 0.0), data.get("malto_pct", 0.0),
             data.get("carbone_pct", 0.0), data.get("olio_pct", 0.0),
             extras, data.get("notes"), data.get("sort_order", 0),
+            data.get("recipe_type", "pizza"), flour_mix,
             recipe_id
         ))
 
@@ -476,6 +517,106 @@ def update_timing_guide(guide_id: int, name: str, content: str):
         conn.execute(
             "UPDATE timing_guides SET name=?, content=? WHERE id=?",
             (name, content, guide_id)
+        )
+
+
+# ── Timing Templates ──────────────────────────────────────────────────────────
+
+_DEFAULT_TIMING_TEMPLATES = [
+    {
+        "key": "focaccia",
+        "name": "Focaccia Romana in Teglia",
+        "emoji": "🟢",
+        "calendar_color_id": "2",
+        "service_label": "Orario in cui la focaccia è pronta",
+        "service_event_name": "🍕 Focaccia pronta — Servizio",
+        "service_event_duration": 0,
+        "sort_order": 1,
+        "steps": json.dumps([
+            {"name": "Preparazione prefermenti (biga + poolish)", "inverno": 15, "estate": 15, "note": ""},
+            {"name": "Prefermenti a temperatura ambiente", "inverno": 240, "estate": 60, "note": "Poolish dopo 1h può andare in frigo"},
+            {"name": "Prefermenti in frigo", "inverno": 1440, "estate": 1440, "note": "Minimo 24h, max 48h"},
+            {"name": "Chiusura impasto", "inverno": 30, "estate": 30, "note": ""},
+            {"name": "Riposo impasto", "inverno": 120, "estate": 60, "note": "Guida: 1.5× volume"},
+            {"name": "Staglio", "inverno": 15, "estate": 15, "note": "Base umida in alto, cospargi farina"},
+            {"name": "Lievitazione panetti + stesura", "inverno": 240, "estate": 240, "note": "Guida: 2× volume. Stesura: 80% teglia, parte umida sotto, lavora ultimi 2cm"},
+            {"name": "Accensione forno + preriscaldo", "inverno": 30, "estate": 30, "note": "280-290°", "parallel": True},
+            {"name": "Prima cottura", "inverno": 10, "estate": 10, "note": "Fondo più che platea"},
+            {"name": "Seconda cottura", "inverno": 3, "estate": 3, "note": "2-4 min, stessa T°, sciogliere ingredienti"},
+        ]),
+    },
+    {
+        "key": "napoletana",
+        "name": "Pizza Napoletana",
+        "emoji": "🍕",
+        "calendar_color_id": "7",
+        "service_label": "Orario di inizio pizzata (prima pizza)",
+        "service_event_name": "🍕 Pizzata",
+        "service_event_duration": 90,
+        "sort_order": 2,
+        "steps": json.dumps([
+            {"name": "Preparazione prefermenti (biga + poolish)", "inverno": 15, "estate": 15, "note": ""},
+            {"name": "Prefermenti a temperatura ambiente", "inverno": 240, "estate": 60, "note": "Poolish dopo 1h può andare in frigo"},
+            {"name": "Prefermenti in frigo", "inverno": 1440, "estate": 1440, "note": "Minimo 24h, max 48h"},
+            {"name": "Chiusura impasto", "inverno": 30, "estate": 30, "note": ""},
+            {"name": "Riposo impasto", "inverno": 120, "estate": 60, "note": "Guida: 1.5× volume"},
+            {"name": "Staglio", "inverno": 15, "estate": 15, "note": "Base umida in alto, cospargi farina"},
+            {"name": "Lievitazione panetti", "inverno": 210, "estate": 120, "note": "Guida: 2× volume"},
+            {"name": "Accensione forno + preriscaldo", "inverno": 25, "estate": 25, "note": "", "parallel": True},
+        ]),
+    },
+    {
+        "key": "brioche",
+        "name": "Pasta Brioche",
+        "emoji": "🥐",
+        "calendar_color_id": "5",
+        "service_label": "Orario di uscita dal forno",
+        "service_event_name": "🥐 Brioche pronta — Servizio",
+        "service_event_duration": 0,
+        "sort_order": 3,
+        "steps": json.dumps([
+            {"name": "Impasto fase 1 (formazione glutine)", "inverno": 10, "estate": 10, "note": "Tutti gli ingredienti eccetto metà zucchero, sale, burro, aromi"},
+            {"name": "Impasto fase 2 (struttura finale)", "inverno": 10, "estate": 60, "note": "Aggiungi zucchero + sale. Controlla T° < 26°, altrimenti frigo"},
+            {"name": "Impasto fase 3 — chiusura", "inverno": 15, "estate": 15, "note": "Burro + aromi poco alla volta. T° 24-26° se frigo, 27-28° se porzioni subito"},
+            {"name": "Riposo a temperatura ambiente", "inverno": 20, "estate": 20, "note": ""},
+            {"name": "Lievitazione massa in frigo 4°", "inverno": 720, "estate": 480, "note": "Guida: 1.5× volume"},
+            {"name": "Divisione e formatura", "inverno": 10, "estate": 10, "note": "Conviene fare preforma"},
+            {"name": "Lievitazione + farcitura forme", "inverno": 240, "estate": 120, "note": "Guida: 2× volume"},
+            {"name": "Cottura", "inverno": 20, "estate": 20, "note": "Preriscaldo 190°, abbassa a 170° in infornata. Bun: 15-17 min, Bauletti: 25 min"},
+        ]),
+    },
+]
+
+
+def seed_timing_templates():
+    with get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM timing_templates").fetchone()[0]
+        if count > 0:
+            return
+        for t in _DEFAULT_TIMING_TEMPLATES:
+            conn.execute("""
+                INSERT INTO timing_templates
+                  (key, name, emoji, calendar_color_id, service_label,
+                   service_event_name, service_event_duration, steps, sort_order)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (t["key"], t["name"], t["emoji"], t["calendar_color_id"],
+                  t["service_label"], t["service_event_name"],
+                  t["service_event_duration"], t["steps"], t["sort_order"]))
+
+
+def get_timing_templates():
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM timing_templates ORDER BY sort_order, id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_timing_template(key: str, steps_json: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE timing_templates SET steps=? WHERE key=?",
+            (steps_json, key)
         )
 
 
