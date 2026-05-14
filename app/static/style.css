@@ -1245,6 +1245,44 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
 /* ── Impostazioni Tab ─────────────────────────────────────────────────────── */
 
+/* ── Settings subnav ─────────────────────────────────────────────────────── */
+
+.settings-subnav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.settings-subnav-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 8px 16px;
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: 0;
+  transition: color .15s, border-color .15s;
+}
+
+.settings-subnav-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+.settings-subnav-btn:hover:not(.active) {
+  color: var(--text-1);
+}
+
+.settings-view {
+  /* shown/hidden by JS */
+}
+
 .settings-section {
   margin-bottom: 36px;
 }
@@ -1376,6 +1414,24 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   padding: 1px 5px;
   margin-left: 6px;
   vertical-align: middle;
+}
+
+/* ── Flour sub-rows (per-type gram breakdown) ────────────────────────────── */
+
+.prep-flour-sub {
+  background: var(--bg-hover);
+  opacity: .85;
+}
+
+.prep-flour-sub span:first-child {
+  padding-left: 22px;
+  font-size: .8rem;
+  color: var(--text-3);
+}
+
+.prep-flour-sub .prep-row-grams {
+  font-size: .8rem;
+  color: var(--text-3);
 }
 
 /* ── Nota Ricetta Modal ───────────────────────────────────────────────────── */

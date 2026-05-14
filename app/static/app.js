@@ -214,14 +214,29 @@ function recipeDetailsHTML(recipe, editMode = false) {
   const isOther = (recipe.recipe_type || 'pizza') === 'other';
   const fm      = recipe.flour_mix || {};
 
-  const flourMixLabel = (sec, flourgrams) => {
+  const flourMixRows = (sec, calcPrefix) => {
     const s = fm[sec];
     if (!s || (s.grano_tenero >= 100 && !s.integrale && !s.speciale)) return '';
-    const parts = [];
-    if ((s.grano_tenero || 0) > 0) parts.push(`${s.grano_tenero}% T`);
-    if ((s.integrale    || 0) > 0) parts.push(`${s.integrale}% int.`);
-    if ((s.speciale     || 0) > 0) parts.push(`${s.speciale}% spec.`);
-    return parts.length ? `<div class="flour-mix-badge">${parts.join(' + ')}</div>` : '';
+    const rows = [];
+    if ((s.grano_tenero || 0) > 0) rows.push(`
+      <div class="prep-row prep-flour-sub">
+        <span>↳ Grano tenero ${s.grano_tenero}%</span>
+        <span></span>
+        <span class="prep-row-grams" data-calc="${calcPrefix}-flour-gt">—</span>
+      </div>`);
+    if ((s.integrale || 0) > 0) rows.push(`
+      <div class="prep-row prep-flour-sub">
+        <span>↳ Integrale ${s.integrale}%</span>
+        <span></span>
+        <span class="prep-row-grams" data-calc="${calcPrefix}-flour-int">—</span>
+      </div>`);
+    if ((s.speciale || 0) > 0) rows.push(`
+      <div class="prep-row prep-flour-sub">
+        <span>↳ Speciale ${s.speciale}%</span>
+        <span></span>
+        <span class="prep-row-grams" data-calc="${calcPrefix}-flour-spec">—</span>
+      </div>`);
+    return rows.join('');
   };
 
   // Helper: returns an editable input in editMode, or a read-only span in view mode
@@ -308,7 +323,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
 <div class="prep-container" data-recipe-id="${recipe.id}">
   ${isOther ? '' : `<div class="prep-section" id="prep-biga-${recipe.id}">
     <div class="prep-section-header biga">
-      <span>BIGA${flourMixLabel('biga')}</span>
+      <span>BIGA</span>
       <span class="header-flour" data-calc="biga-total">—</span>
     </div>
     <div class="prep-row">
@@ -316,6 +331,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
       <span class="prep-row-pct-fixed">100%</span>
       <span class="prep-row-grams" data-calc="biga-flour">—</span>
     </div>
+    ${flourMixRows('biga', 'biga')}
     <div class="prep-row">
       <span>Acqua</span>
       <span class="prep-row-pct">${pSec('biga-acqua', recipe.biga_hydration_pct ?? 44, 'min="20" max="100" step="1"')}</span>
@@ -330,7 +346,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
   </div>`}
   <div class="prep-section" id="prep-poolish-${recipe.id}">
     <div class="prep-section-header poolish">
-      <span>Poolish/Yudane${flourMixLabel('poolish')}</span>
+      <span>Poolish/Yudane</span>
       <span class="header-flour" data-calc="poolish-total">—</span>
     </div>
     <div class="prep-row">
@@ -338,6 +354,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
       <span class="prep-row-pct-fixed">100%</span>
       <span class="prep-row-grams" data-calc="poolish-flour">—</span>
     </div>
+    ${flourMixRows('poolish', 'poolish')}
     <div class="prep-row">
       <span>Acqua</span>
       <span class="prep-row-pct-fixed">100%</span>
@@ -352,7 +369,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
   </div>
   ${isOther ? '' : `<div class="prep-section" id="prep-autolisi-${recipe.id}">
     <div class="prep-section-header autolisi">
-      <span>AUTOLISI${flourMixLabel('autolisi')}</span>
+      <span>AUTOLISI</span>
       <span class="header-flour" data-calc="autolisi-total">—</span>
     </div>
     <div class="prep-row">
@@ -360,6 +377,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
       <span class="prep-row-pct-fixed">100%</span>
       <span class="prep-row-grams" data-calc="autolisi-flour">—</span>
     </div>
+    ${flourMixRows('autolisi', 'autolisi')}
     <div class="prep-row">
       <span>Acqua</span>
       <span class="prep-row-pct">${pSec('autolisi-acqua', recipe.autolisi_water_pct || recipe.hydration_pct, 'min="0" max="100" step="1"')}</span>
@@ -369,7 +387,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
   </div>`}
   <div class="prep-section" id="prep-chiusura-${recipe.id}">
     <div class="prep-section-header chiusura">
-      <span>Chiusura Impasto${flourMixLabel('chiusura')}</span>
+      <span>Chiusura Impasto</span>
       <span class="header-flour" data-calc="chiusura-total">—</span>
     </div>
     <div class="prep-row">
@@ -377,6 +395,7 @@ function recipeDetailsHTML(recipe, editMode = false) {
       <span class="prep-row-pct-fixed">—</span>
       <span class="prep-row-grams" data-calc="chiusura-flour">—</span>
     </div>
+    ${flourMixRows('chiusura', 'chiusura')}
     <div class="prep-row">
       <span>Acqua rimanente</span>
       <span class="prep-row-pct-fixed">—</span>
@@ -503,6 +522,19 @@ function onParamChange(recipeId, recipe) {
 
   set('chiusura-flour', chiusuraF);
   set('chiusura-water', chiusuraW);
+
+  const fm = recipe.flour_mix || {};
+  const setFlourMix = (sec, secF) => {
+    const s = fm[sec];
+    if (!s) return;
+    if ((s.grano_tenero || 0) > 0) set(`${sec}-flour-gt`,   secF * (s.grano_tenero || 0) / 100);
+    if ((s.integrale    || 0) > 0) set(`${sec}-flour-int`,  secF * (s.integrale    || 0) / 100);
+    if ((s.speciale     || 0) > 0) set(`${sec}-flour-spec`, secF * (s.speciale     || 0) / 100);
+  };
+  setFlourMix('biga',     bigaF);
+  setFlourMix('poolish',  poolishF);
+  setFlourMix('autolisi', autolisiF);
+  setFlourMix('chiusura', chiusuraF);
   set('chiusura-salt',  saltG);
   set('chiusura-yeast', chiusuraYeastG);
   set('malto-g',        maltoG);
@@ -556,6 +588,7 @@ async function saveRecipeParamsInline(details, recipe) {
     sort_order: recipe.sort_order || 0,
     recipe_type: recipe.recipe_type || 'pizza',
     flour_mix: recipe.flour_mix || null,
+    timing_template_key: recipe.timing_template_key || null,
   };
   try {
     await api('PUT', `/api/recipes/${recipe.id}`, payload);
@@ -582,6 +615,7 @@ function openNewRecipe() {
   document.getElementById('rf-description').value = '';
   document.getElementById('rf-notes').value = '';
   document.getElementById('rf-type').value = 'pizza';
+  populateTimingKeySelect(null);
   document.getElementById('rf-pieces').value = 6;
   document.getElementById('rf-ball').value = 255;
   document.getElementById('rf-hydration').value = 65;
@@ -630,6 +664,7 @@ async function openEditRecipe(recipeId) {
     document.getElementById('recipe-params-section').style.display = '';
     const rtype = r.recipe_type || 'pizza';
     document.getElementById('rf-type').value = rtype;
+    populateTimingKeySelect(r.timing_template_key || null);
     resetFlourMixInputs(r.flour_mix);
     updateRecipeTypeUI(rtype);
     openModal('modal-recipe');
@@ -696,6 +731,7 @@ async function saveRecipe() {
     sort_order: (id && editingRecipe) ? (editingRecipe.sort_order || 0) : allRecipes.length * 10,
     recipe_type: document.getElementById('rf-type').value || 'pizza',
     flour_mix: collectFlourMix(),
+    timing_template_key: document.getElementById('rf-timing-key').value || null,
   };
 
   try {
@@ -730,6 +766,15 @@ function updateRecipeTypeUI(type) {
 }
 
 document.getElementById('rf-type')?.addEventListener('change', e => updateRecipeTypeUI(e.target.value));
+
+function populateTimingKeySelect(selectedKey) {
+  const sel = document.getElementById('rf-timing-key');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Nessuno —</option>' +
+    Object.entries(TIMING_DATA).map(([k, t]) =>
+      `<option value="${k}"${k === selectedKey ? ' selected' : ''}>${t.emoji} ${t.name}</option>`
+    ).join('');
+}
 
 // ── Flour Mix helpers ─────────────────────────────────────────────────────────
 
@@ -1742,7 +1787,7 @@ async function lookupIngredientNutrition(ingredientId, name) {
   const btn = document.querySelector(`.btn-lookup-ingredient[data-id="${ingredientId}"]`);
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
-    const results = await api('GET', `/api/lookup-nutrition?name=${encodeURIComponent(name)}&limit=5`);
+    const results = await api('GET', `/api/lookup-nutrition?name=${encodeURIComponent(name)}&limit=20`);
     const list = Array.isArray(results) ? results : [results];
     if (list.length === 1) {
       applyLookupToIngredient(ingredientId, list[0]);
@@ -2313,9 +2358,25 @@ async function sharePartyResults() {
 
 async function renderImpostazioniTab() {
   allIngredients = await api('GET', '/api/ingredients').catch(() => allIngredients);
-  renderMenuIngredienti();
-  renderTimingTemplatesEditor();
+  const activeView = document.querySelector('.settings-subnav-btn.active')?.dataset.view || 'ingredienti';
+  if (activeView === 'ingredienti') {
+    renderMenuIngredienti();
+  } else {
+    renderTimingTemplatesEditor();
+  }
 }
+
+function switchSettingsView(view) {
+  document.querySelectorAll('.settings-subnav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('.settings-view').forEach(el => { el.style.display = 'none'; });
+  document.getElementById(`settings-view-${view}`).style.display = '';
+  if (view === 'ingredienti') renderMenuIngredienti();
+  else renderTimingTemplatesEditor();
+}
+
+document.querySelectorAll('.settings-subnav-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchSettingsView(btn.dataset.view));
+});
 
 function renderTimingTemplatesEditor() {
   const container = document.getElementById('impostazioni-timing');
@@ -2496,8 +2557,9 @@ let googleAccessToken = null;
 let plannerInited = false;
 let savedPartyConfig = null; // set by savePartyForPlanner()
 
-function partyRecipeToPlanner(recipeName) {
-  const n = (recipeName || '').toLowerCase();
+function partyRecipeToPlanner(recipe) {
+  if (recipe.timing_template_key && TIMING_DATA[recipe.timing_template_key]) return recipe.timing_template_key;
+  const n = (recipe.name || '').toLowerCase();
   if (n.includes('napoletana') || n.includes('napolit')) return 'napoletana';
   if (n.includes('focaccia') || n.includes('teglia')) return 'focaccia';
   if (n.includes('brioche') || n.includes('bun') || n.includes('bread')) return 'brioche';
@@ -2509,7 +2571,7 @@ function savePartyForPlanner() {
   if (!activeRecipes.length) return;
   const firstRecipe = activeRecipes[0];
   const state = partyState[firstRecipe.id];
-  const recipeKeys = activeRecipes.map(r => partyRecipeToPlanner(r.name)).filter(Boolean);
+  const recipeKeys = activeRecipes.map(r => partyRecipeToPlanner(r)).filter(Boolean);
   savedPartyConfig = {
     recipeKeys,
     pieces: state.pieces || firstRecipe.default_pieces,

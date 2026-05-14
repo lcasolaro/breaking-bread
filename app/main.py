@@ -50,6 +50,7 @@ class RecipeBody(BaseModel):
     sort_order: int = 0
     recipe_type: str = "pizza"
     flour_mix: Optional[dict] = None
+    timing_template_key: Optional[str] = None
 
 
 @app.get("/api/recipes")
@@ -275,7 +276,7 @@ def lookup_nutrition(name: str, limit: int = 1):
             "search_simple": 1,
             "action": "process",
             "json": 1,
-            "page_size": min(limit * 3, 20),
+            "page_size": min(limit * 2, 60),
             "fields": "product_name,nutriments",
         })
     )

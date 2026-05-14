@@ -56,22 +56,22 @@
     <div class="section-header">
       <h1 class="section-title">Impostazioni</h1>
     </div>
-    <!-- Libreria Ingredienti -->
-    <div class="settings-section">
+    <nav class="settings-subnav">
+      <button class="settings-subnav-btn active" data-view="ingredienti">Libreria Ingredienti</button>
+      <button class="settings-subnav-btn" data-view="tempistiche">Tempistiche Pianificatore</button>
+    </nav>
+    <!-- Sub-view: Ingredienti -->
+    <div id="settings-view-ingredienti" class="settings-view">
       <div class="settings-section-header">
-        <h2 class="settings-section-title">Libreria Ingredienti</h2>
         <button class="btn btn-primary btn-sm" id="btn-new-ingredient">+ Nuovo Ingrediente</button>
       </div>
       <div id="impostazioni-ingredienti">
         <!-- Ingredient library rendered by JS -->
       </div>
     </div>
-    <!-- Tempistiche Pianificatore -->
-    <div class="settings-section">
-      <div class="settings-section-header">
-        <h2 class="settings-section-title">Tempistiche Pianificatore</h2>
-      </div>
-      <p class="settings-section-desc">Modifica i tempi (in minuti) usati dal pianificatore per calcolare la timeline. Estate = aprile–ottobre.</p>
+    <!-- Sub-view: Tempistiche -->
+    <div id="settings-view-tempistiche" class="settings-view" style="display:none">
+      <p class="settings-section-desc" style="padding:12px 0 4px">Modifica i tempi (in minuti) usati dal pianificatore per calcolare la timeline. Estate = aprile–ottobre.</p>
       <div id="impostazioni-timing">
         <!-- Timing templates rendered by JS -->
         <div class="empty-state"><p>Caricamento...</p></div>
@@ -206,9 +206,17 @@
           </select>
         </div>
       </div>
-      <div class="form-group">
-        <label>Descrizione (opzionale)</label>
-        <input type="text" id="rf-description" placeholder="Note generali sull'impasto">
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Descrizione (opzionale)</label>
+          <input type="text" id="rf-description" placeholder="Note generali sull'impasto">
+        </div>
+        <div class="form-group">
+          <label>Template Pianificatore</label>
+          <select id="rf-timing-key">
+            <option value="">— Nessuno —</option>
+          </select>
+        </div>
       </div>
 
       <div id="recipe-params-section" style="display:none">

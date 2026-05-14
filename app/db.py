@@ -117,8 +117,9 @@ def init_db():
                 pass
 
         for col, coldef in [
-            ("recipe_type", "TEXT DEFAULT 'pizza'"),
-            ("flour_mix",   "TEXT"),
+            ("recipe_type",          "TEXT DEFAULT 'pizza'"),
+            ("flour_mix",            "TEXT"),
+            ("timing_template_key",  "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE recipes ADD COLUMN {col} {coldef}")
@@ -243,8 +244,9 @@ def create_recipe(data: dict) -> int:
                hydration_pct, salt_pct, yeast_pct, biga_pct, poolish_pct, autolisi_pct,
                biga_hydration_pct, biga_yeast_pct, poolish_yeast_pct,
                autolisi_water_pct, malto_pct, carbone_pct, olio_pct,
-               extra_ingredients, notes, sort_order, recipe_type, flour_mix)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               extra_ingredients, notes, sort_order, recipe_type, flour_mix,
+               timing_template_key)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             data["name"], data.get("description"), data["base_flour_g"],
             data["default_pieces"], data["default_ball_g"],
@@ -255,7 +257,8 @@ def create_recipe(data: dict) -> int:
             data.get("autolisi_water_pct", 0.0), data.get("malto_pct", 0.0),
             data.get("carbone_pct", 0.0), data.get("olio_pct", 0.0),
             extras, data.get("notes"), data.get("sort_order", 0),
-            data.get("recipe_type", "pizza"), flour_mix
+            data.get("recipe_type", "pizza"), flour_mix,
+            data.get("timing_template_key") or None
         ))
         return cur.lastrowid
 
@@ -274,7 +277,8 @@ def update_recipe(recipe_id: int, data: dict):
               hydration_pct=?, salt_pct=?, yeast_pct=?, biga_pct=?, poolish_pct=?, autolisi_pct=?,
               biga_hydration_pct=?, biga_yeast_pct=?, poolish_yeast_pct=?,
               autolisi_water_pct=?, malto_pct=?, carbone_pct=?, olio_pct=?,
-              extra_ingredients=?, notes=?, sort_order=?, recipe_type=?, flour_mix=?
+              extra_ingredients=?, notes=?, sort_order=?, recipe_type=?, flour_mix=?,
+              timing_template_key=?
             WHERE id=?
         """, (
             data["name"], data.get("description"), data["base_flour_g"],
@@ -287,6 +291,7 @@ def update_recipe(recipe_id: int, data: dict):
             data.get("carbone_pct", 0.0), data.get("olio_pct", 0.0),
             extras, data.get("notes"), data.get("sort_order", 0),
             data.get("recipe_type", "pizza"), flour_mix,
+            data.get("timing_template_key") or None,
             recipe_id
         ))
 
