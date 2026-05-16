@@ -2776,6 +2776,7 @@ let plannerState = { recipes: [], day: null, time: null, season: null };
 let plannerTimelines = {}; // recipeKey → events[]
 let googleTokenClient = null;
 let googleAccessToken = null;
+let pendingCalendarCallback = null;
 let plannerInited = false;
 let savedPartyConfig = null; // set by savePartyForPlanner()
 
@@ -2821,7 +2822,6 @@ function initPlanner() {
 
   // Calendar buttons (static HTML → wire via JS)
   document.getElementById('planner-btn-share').addEventListener('click', sharePlannerTimeline);
-  document.getElementById('planner-btn-connect').addEventListener('click', connectGoogleCalendar);
   document.getElementById('planner-btn-create').addEventListener('click', createCalendarEvents);
 
   const month = new Date().getMonth() + 1;
@@ -2913,13 +2913,17 @@ function selectPlannerTime(timeStr) {
     p.classList.toggle('active', p.dataset.time === timeStr);
   });
   const customRow = document.getElementById('planner-custom-time-row');
+  const customInput = document.getElementById('planner-custom-time');
   if (timeStr === 'altro') {
     customRow.style.display = '';
-    document.getElementById('planner-custom-time').onchange = (e) => {
-      plannerState.time = e.target.value;
+    if (!customInput.value) customInput.value = '20:00';
+    customInput.oninput = (e) => {
+      plannerState.time = e.target.value || null;
       tryCalcPlannerTimeline();
     };
-    plannerState.time = null;
+    plannerState.time = customInput.value || null;
+    customInput.focus();
+    tryCalcPlannerTimeline();
   } else {
     customRow.style.display = 'none';
     plannerState.time = timeStr;
@@ -3047,30 +3051,26 @@ function renderPlannerTimeline(timelines) {
 }
 
 function initGoogleAuth() {
-  if (!GOOGLE_CLIENT_ID || typeof google === 'undefined' || !google.accounts) return;
+  if (!GOOGLE_CLIENT_ID || typeof google === 'undefined' || !google.accounts) return false;
   googleTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/calendar.events',
-    callback: (response) => {
-      if (response.error) { toast('Autenticazione Google fallita', 'error'); return; }
+    callback: async (response) => {
+      if (response.error) {
+        toast('Autenticazione Google fallita', 'error');
+        document.getElementById('planner-btn-create').disabled = false;
+        document.getElementById('planner-btn-create').textContent = '✓ Crea eventi su Calendar';
+        return;
+      }
       googleAccessToken = response.access_token;
-      const btn = document.getElementById('planner-btn-connect');
-      btn.textContent = '✓ Google connesso';
-      btn.classList.replace('btn-secondary', 'btn-primary');
-      document.getElementById('planner-btn-create').disabled = false;
-      toast('Google Calendar connesso!', 'success');
+      if (pendingCalendarCallback) {
+        const cb = pendingCalendarCallback;
+        pendingCalendarCallback = null;
+        await cb();
+      }
     },
   });
-}
-
-function connectGoogleCalendar() {
-  if (!GOOGLE_CLIENT_ID) {
-    document.getElementById('planner-gcal-note').textContent =
-      'Configura GOOGLE_CLIENT_ID in app.js per usare questa funzione.';
-    return;
-  }
-  if (!googleTokenClient) initGoogleAuth();
-  if (googleTokenClient) googleTokenClient.requestAccessToken();
+  return true;
 }
 
 function formatPlannerText(timelines) {
@@ -3097,8 +3097,7 @@ async function sharePlannerTimeline() {
   }
 }
 
-async function createCalendarEvents() {
-  if (!googleAccessToken || !Object.keys(plannerTimelines).length) return;
+async function doCreateCalendarEvents() {
   const btn = document.getElementById('planner-btn-create');
   btn.disabled = true;
   btn.textContent = 'Creazione in corso...';
@@ -3121,7 +3120,12 @@ async function createCalendarEvents() {
           headers: { Authorization: `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (res.ok) created++; else errors++;
+        if (res.ok) created++;
+        else if (res.status === 401) {
+          // Token scaduto: forza nuovo auth
+          googleAccessToken = null;
+          errors++;
+        } else errors++;
       } catch { errors++; }
     }
   }
@@ -3130,6 +3134,32 @@ async function createCalendarEvents() {
   btn.textContent = '✓ Crea eventi su Calendar';
   if (errors === 0) toast(`${created} eventi creati su Google Calendar!`, 'success');
   else toast(`${created} creati, ${errors} errori`, 'error');
+}
+
+async function createCalendarEvents() {
+  if (!Object.keys(plannerTimelines).length) return;
+
+  if (googleAccessToken) {
+    await doCreateCalendarEvents();
+    return;
+  }
+
+  // Auto-auth: inizializza se necessario, poi richiedi token (silent se già autorizzato)
+  if (!GOOGLE_CLIENT_ID) {
+    toast('Google Calendar non configurato', 'error');
+    return;
+  }
+  if (!googleTokenClient) {
+    const ok = initGoogleAuth();
+    if (!ok) { toast('Google API non disponibile — ricarica la pagina', 'error'); return; }
+  }
+
+  pendingCalendarCallback = doCreateCalendarEvents;
+  const btn = document.getElementById('planner-btn-create');
+  btn.disabled = true;
+  btn.textContent = 'Connessione a Google...';
+  // prompt:'' tenta il silent token (nessun popup se già autorizzato in questo browser)
+  googleTokenClient.requestAccessToken({ prompt: '' });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
