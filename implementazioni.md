@@ -4,6 +4,22 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-16 (v7.4 — Step editor Tempistiche + Effetti bounce/3D)
+
+### Step editor nelle Tempistiche
+Ogni template di timing ora permette di aggiungere e rimuovere step. Il nome dello step è un campo di testo editabile (non più testo statico). Il pulsante ✕ rimuove la riga (con guard: minimo 1 step). Il pulsante "＋ Aggiungi Step" appende una nuova riga con valori default (60 min inverno/estate). Il save (`PUT /api/timing-templates/{key}`) ora legge le righe per posizione DOM, non per `data-idx`, rendendo compatibili le righe aggiunte dinamicamente.
+
+### Trasparenza, effetto 3D e bounce
+- **`--bg-card`** ridotto da 0.72 a 0.58, **`--bg-hover`** da 0.45 a 0.32: superfici glass più trasparenti.
+- **`--bounce`** (`cubic-bezier(0.34, 1.56, 0.64, 1)`) e **`--spring`** (`cubic-bezier(0.22, 1, 0.36, 1)`): nuove variabili motion.
+- **Recipe card**: si solleva di 6px + scala a 1.008 all'hover con bounce elastico; ombra elevata `--shadow-hover`; animazione di entrata con stagger (0–250ms cascade sulle prime 6 card).
+- **Party/planner steps**: hover lift 3px con spring.
+- **Pulsanti**: click schiaccia a 0.90, spring back con `var(--bounce)`.
+- **Modal**: animazione entrata `modalIn` (scala + slide + overshoot).
+- **Toast**: animazione entrata `toastIn` dal basso con bounce.
+
+---
+
 ## 2026-05-16 (v7.3 — Liquid Glass Redesign + Fix lista spesa + Fix Tempistiche)
 
 ### Redesign interfaccia: Apple Liquid Glass

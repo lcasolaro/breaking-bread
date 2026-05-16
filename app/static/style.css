@@ -9,8 +9,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   --bg-gradient:    linear-gradient(135deg, #c4d8ee 0%, #dae7f7 45%, #ccdcef 100%);
 
   /* Glass surfaces */
-  --bg-card:        rgba(255, 255, 255, 0.72);
-  --bg-hover:       rgba(255, 255, 255, 0.45);
+  --bg-card:        rgba(255, 255, 255, 0.58);
+  --bg-hover:       rgba(255, 255, 255, 0.32);
   --bg-input:       rgba(255, 255, 255, 0.90);
   --bg-modal:       rgba(10, 20, 40, 0.40);
   --bg-header:      rgba(12, 22, 42, 0.86);
@@ -49,6 +49,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   --shadow:         0 2px 12px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.80);
   --shadow-md:      0 4px 20px rgba(0,0,0,0.09), inset 0 1px 0 rgba(255,255,255,0.85);
   --shadow-lg:      0 10px 40px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.85);
+  --shadow-hover:   0 20px 56px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
+
+  /* Motion curves */
+  --bounce:         cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring:         cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Blur */
   --blur:           blur(24px);
@@ -127,9 +132,9 @@ button { cursor: pointer; font-family: inherit; }
   border: none;
   font-size: .875rem;
   font-weight: 600;
-  transition: background .15s, transform .1s;
+  transition: background .15s, box-shadow .2s, transform .4s var(--bounce);
 }
-.btn:active { transform: scale(.97); }
+.btn:active { transform: scale(.90); transition: transform .08s; }
 .btn-primary   { background: var(--accent);   color: #fff; box-shadow: 0 4px 16px rgba(0,119,204,0.28); }
 .btn-primary:hover { background: var(--accent-h); box-shadow: 0 6px 20px rgba(0,119,204,0.35); }
 .btn-secondary {
@@ -196,9 +201,20 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  transition: box-shadow .15s, background .15s;
+  transition: box-shadow .35s var(--spring), transform .35s var(--bounce), background .15s;
+  animation: cardIn .5s var(--bounce) both;
 }
-.recipe-card:hover { background: rgba(255,255,255,0.88); box-shadow: var(--shadow-md); }
+.recipe-card:hover {
+  background: rgba(255,255,255,0.78);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-6px) scale(1.008);
+}
+.recipes-grid .recipe-card:nth-child(1) { animation-delay:   0ms; }
+.recipes-grid .recipe-card:nth-child(2) { animation-delay:  50ms; }
+.recipes-grid .recipe-card:nth-child(3) { animation-delay: 100ms; }
+.recipes-grid .recipe-card:nth-child(4) { animation-delay: 150ms; }
+.recipes-grid .recipe-card:nth-child(5) { animation-delay: 200ms; }
+.recipes-grid .recipe-card:nth-child(6) { animation-delay: 250ms; }
 
 .recipe-card-header {
   padding: 16px 18px 12px;
@@ -348,6 +364,7 @@ tr.prefermento td:first-child { padding-left: 20px; }
   padding: 20px;
 }
 .modal-overlay.open { display: flex; }
+.modal-overlay.open .modal { animation: modalIn .45s var(--spring) both; }
 .modal {
   background: rgba(255,255,255,0.82);
   backdrop-filter: var(--blur-lg);
@@ -465,7 +482,9 @@ tr.prefermento td:first-child { padding-left: 20px; }
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   overflow: hidden;
+  transition: box-shadow .3s var(--spring), transform .3s var(--bounce);
 }
+.party-step:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
 .party-step-header {
   padding: 12px 18px;
   background: var(--bg-hover);
@@ -694,17 +713,29 @@ tr.prefermento td:first-child { padding-left: 20px; }
   font-size: .875rem;
   box-shadow: var(--shadow-lg);
   z-index: 300;
-  transform: translateY(80px);
   opacity: 0;
-  transition: transform .25s, opacity .25s;
 }
-.toast.show { transform: none; opacity: 1; }
+.toast.show { animation: toastIn .4s var(--bounce) both; opacity: 1; }
 .toast.success { background: var(--green); }
 .toast.error   { background: var(--red); }
 
 /* Spinner */
 .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes modalIn {
+  0%   { opacity: 0; transform: scale(0.88) translateY(24px); }
+  65%  { opacity: 1; transform: scale(1.025) translateY(-4px); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes toastIn {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
 
 /* Empty state */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-3); }
@@ -1118,7 +1149,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   overflow: hidden;
+  transition: box-shadow .3s var(--spring), transform .3s var(--bounce);
 }
+.planner-step:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
 .planner-step-header {
   padding: 11px 18px;
   background: var(--bg-hover);
@@ -1424,12 +1457,42 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .timing-step-input {
   width: 64px;
   padding: 3px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-md);
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--bg-input);
   color: var(--text-1);
   font-size: .83rem;
   text-align: right;
+  font-family: inherit;
+}
+
+.timing-step-name-input {
+  width: 100%;
+  min-width: 160px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-md);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-1);
+  font-size: .83rem;
+  font-family: inherit;
+}
+
+.timing-step-note-input {
+  width: 100%;
+  min-width: 100px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: .78rem;
+  font-family: inherit;
+}
+.timing-step-note-input:focus {
+  border-color: var(--border-md);
+  background: var(--bg-input);
+  outline: none;
 }
 
 /* ── Flour Mix Form ───────────────────────────────────────────────────────── */

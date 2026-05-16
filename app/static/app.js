@@ -2496,14 +2496,16 @@ function renderTimingTemplatesEditor() {
     container.innerHTML = '<div class="empty-state"><p>Nessun template disponibile.</p></div>';
     return;
   }
+
   container.innerHTML = Object.entries(TIMING_DATA).map(([key, recipe]) => {
-    const stepsHTML = recipe.steps.map((step, i) => `
+    const stepsHTML = recipe.steps.map((step) => `
       <tr>
-        <td class="timing-step-name">${step.name}</td>
-        <td><input type="number" class="timing-step-input" data-key="${key}" data-idx="${i}" data-field="inverno" min="0" step="1" value="${step.inverno}" style="width:60px"></td>
-        <td><input type="number" class="timing-step-input" data-key="${key}" data-idx="${i}" data-field="estate" min="0" step="1" value="${step.estate}" style="width:60px"></td>
-        <td class="timing-step-note" style="font-size:.78rem;color:var(--text-3)">${step.note || ''}</td>
+        <td><input type="text" class="timing-step-name-input" data-key="${key}" value="${(step.name || '').replace(/"/g, '&quot;')}" placeholder="Nome step"></td>
+        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="inverno" min="0" step="1" value="${step.inverno}" style="width:60px"></td>
+        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="estate" min="0" step="1" value="${step.estate}" style="width:60px"></td>
+        <td><input type="text" class="timing-step-note-input" data-key="${key}" value="${(step.note || '').replace(/"/g, '&quot;')}" placeholder="—"></td>
         <td style="text-align:center;font-size:.8rem">${step.parallel ? '✓' : ''}</td>
+        <td><button class="btn-remove-step" data-key="${key}" title="Rimuovi step" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:.9rem;padding:2px 6px;line-height:1">✕</button></td>
       </tr>`).join('');
     return `
       <div class="timing-template-card">
@@ -2513,22 +2515,30 @@ function renderTimingTemplatesEditor() {
         </div>
         <table class="timing-table">
           <thead>
-            <tr><th>Step</th><th>Inverno (min)</th><th>Estate (min)</th><th>Note</th><th>⚡</th></tr>
+            <tr><th>Step</th><th>Inverno (min)</th><th>Estate (min)</th><th>Note</th><th>⚡</th><th></th></tr>
           </thead>
           <tbody>${stepsHTML}</tbody>
         </table>
+        <div style="padding:8px 12px;border-top:1px solid var(--border)">
+          <button class="btn btn-sm btn-secondary btn-add-step" data-key="${key}">＋ Aggiungi Step</button>
+        </div>
       </div>`;
   }).join('');
 
+  // ── Save handler ──────────────────────────────────────────────────────────
   container.querySelectorAll('.btn-save-timing').forEach(btn => {
     btn.addEventListener('click', async () => {
       const key = btn.dataset.key;
       const recipe = TIMING_DATA[key];
-      const updatedSteps = recipe.steps.map((step, i) => {
-        const inv = parseInt(container.querySelector(`[data-key="${key}"][data-idx="${i}"][data-field="inverno"]`)?.value || step.inverno);
-        const est = parseInt(container.querySelector(`[data-key="${key}"][data-idx="${i}"][data-field="estate"]`)?.value || step.estate);
-        return { ...step, inverno: inv, estate: est };
-      });
+      const card = btn.closest('.timing-template-card');
+      const rows = card.querySelectorAll('tbody tr');
+      const updatedSteps = Array.from(rows).map((row, i) => ({
+        name: row.querySelector('.timing-step-name-input')?.value.trim() || '',
+        inverno: parseInt(row.querySelector('[data-field="inverno"]')?.value ?? 60, 10),
+        estate: parseInt(row.querySelector('[data-field="estate"]')?.value ?? 60, 10),
+        note: row.querySelector('.timing-step-note-input')?.value || '',
+        parallel: recipe.steps[i]?.parallel ?? false,
+      }));
       try {
         await api('PUT', `/api/timing-templates/${key}`, { steps: updatedSteps });
         TIMING_DATA[key].steps = updatedSteps;
@@ -2536,6 +2546,37 @@ function renderTimingTemplatesEditor() {
       } catch (e) {
         toast('Errore salvataggio tempistiche', 'error');
       }
+    });
+  });
+
+  // ── Remove step handler (delegated) ──────────────────────────────────────
+  container.addEventListener('click', e => {
+    const removeBtn = e.target.closest('.btn-remove-step');
+    if (!removeBtn) return;
+    const tbody = removeBtn.closest('tr').closest('tbody');
+    if (tbody.rows.length <= 1) {
+      toast('Deve esserci almeno uno step', 'error');
+      return;
+    }
+    removeBtn.closest('tr').remove();
+  });
+
+  // ── Add step handler ──────────────────────────────────────────────────────
+  container.querySelectorAll('.btn-add-step').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      const card = btn.closest('.timing-template-card');
+      const tbody = card.querySelector('tbody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="timing-step-name-input" data-key="${key}" value="" placeholder="Nome step"></td>
+        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="inverno" min="0" step="1" value="60" style="width:60px"></td>
+        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="estate" min="0" step="1" value="60" style="width:60px"></td>
+        <td><input type="text" class="timing-step-note-input" data-key="${key}" value="" placeholder="—"></td>
+        <td></td>
+        <td><button class="btn-remove-step" data-key="${key}" title="Rimuovi step" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:.9rem;padding:2px 6px;line-height:1">✕</button></td>`;
+      tbody.appendChild(tr);
+      tr.querySelector('.timing-step-name-input').focus();
     });
   });
 }
