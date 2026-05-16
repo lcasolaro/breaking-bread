@@ -493,6 +493,12 @@ def update_timing_template(key: str, body: TimingTemplateStepsBody):
     return {"ok": True}
 
 
+@app.delete("/api/timing-templates/{key}")
+def delete_timing_template(key: str):
+    db.delete_timing_template(key)
+    return {"ok": True}
+
+
 # ── Import ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/import-excel")

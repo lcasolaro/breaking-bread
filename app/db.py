@@ -637,6 +637,11 @@ def update_timing_template(key: str, steps_json: str):
         )
 
 
+def delete_timing_template(key: str):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM timing_templates WHERE key=?", (key,))
+
+
 def create_timing_template(key: str, name: str, calendar_color_id: str, steps: list) -> dict:
     with get_conn() as conn:
         max_sort = conn.execute("SELECT COALESCE(MAX(sort_order), 0) FROM timing_templates").fetchone()[0]

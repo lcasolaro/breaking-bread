@@ -67,6 +67,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 }
 
 /* ── Base ───────────────────────────────────────────────────────────────── */
+body:has(.modal-overlay.open) { overflow: hidden; }
 body {
   background: var(--bg-gradient);
   background-attachment: fixed;
@@ -1494,6 +1495,29 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   background: var(--bg-input);
   outline: none;
 }
+
+.drag-handle {
+  cursor: grab;
+  color: var(--text-3);
+  font-size: 1rem;
+  padding: 0 4px;
+  user-select: none;
+  text-align: center;
+  width: 24px;
+}
+.drag-handle:active { cursor: grabbing; }
+.row-dragging { opacity: 0.35; background: var(--accent-lt); }
+.timing-template-card.locked .drag-handle { visibility: hidden; pointer-events: none; }
+.timing-template-card.locked .step-remove-cell { visibility: hidden; pointer-events: none; }
+.timing-step-name-input:disabled,
+.timing-step-input:disabled,
+.timing-step-note-input:disabled {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+  color: var(--text-1);
+}
+.timing-step-note-input:disabled { color: var(--text-3); }
 
 /* ── Flour Mix Form ───────────────────────────────────────────────────────── */
 

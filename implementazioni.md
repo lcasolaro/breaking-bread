@@ -4,6 +4,22 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-16 (v7.5 — Tempistiche: lock/edit, riordino, elimina template + fix scroll modal)
+
+### Fix scroll sfondo durante modal
+Aggiunto `body:has(.modal-overlay.open) { overflow: hidden; }`: quando un modal è aperto, il body non scrolla più.
+
+### Tempistiche: stato locked/editing
+I template di timing partono in stato **locked** (campi disabilitati, aspetto read-only). Il pulsante "✏️ Modifica" abilita la modifica; "💾 Salva" persiste sul server e torna locked. I campi disabilitati mostrano il testo senza bordi (effetto visualizzazione pulita).
+
+### Tempistiche: riordino step con drag-and-drop
+In modalità editing, ogni riga ha un handle ⠿ (grab cursor). Trascinando la riga nella posizione desiderata, gli step vengono riordinati. Il salvataggio poi persiste l'ordine aggiornato.
+
+### Tempistiche: elimina template
+Ogni card ha un pulsante "🗑 Elimina" che, dopo conferma, cancella il template sia dal DB che dalla memoria. Endpoint: `DELETE /api/timing-templates/{key}`.
+
+---
+
 ## 2026-05-16 (v7.4 — Step editor Tempistiche + Effetti bounce/3D)
 
 ### Step editor nelle Tempistiche

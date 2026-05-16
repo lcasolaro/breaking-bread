@@ -2489,6 +2489,56 @@ document.getElementById('btn-save-new-timing')?.addEventListener('click', async 
   }
 });
 
+function makeStepRow(key, step, editing) {
+  const dis = editing ? '' : 'disabled';
+  const nameVal = (step.name || '').replace(/"/g, '&quot;');
+  const noteVal = (step.note || '').replace(/"/g, '&quot;');
+  return `
+    <tr draggable="true">
+      <td class="drag-handle" title="Trascina per riordinare">⠿</td>
+      <td><input type="text" class="timing-step-name-input" value="${nameVal}" placeholder="Nome step" ${dis}></td>
+      <td><input type="number" class="timing-step-input" data-field="inverno" min="0" step="1" value="${step.inverno}" style="width:60px" ${dis}></td>
+      <td><input type="number" class="timing-step-input" data-field="estate" min="0" step="1" value="${step.estate}" style="width:60px" ${dis}></td>
+      <td><input type="text" class="timing-step-note-input" value="${noteVal}" placeholder="—" ${dis}></td>
+      <td style="text-align:center;font-size:.8rem">${step.parallel ? '✓' : ''}</td>
+      <td class="step-remove-cell"><button class="btn-remove-step" title="Rimuovi step" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:.9rem;padding:2px 6px;line-height:1">✕</button></td>
+    </tr>`;
+}
+
+function setCardEditMode(card, editing) {
+  card.classList.toggle('locked', !editing);
+  card.querySelectorAll('input').forEach(i => { i.disabled = !editing; });
+  card.querySelector('.btn-edit-timing').style.display = editing ? 'none' : '';
+  card.querySelector('.btn-save-timing').style.display = editing ? '' : 'none';
+  card.querySelector('.add-step-footer').style.display = editing ? '' : 'none';
+}
+
+function setupRowDnD(tbody) {
+  let dragging = null;
+  tbody.addEventListener('dragstart', e => {
+    const card = tbody.closest('.timing-template-card');
+    if (card.classList.contains('locked')) { e.preventDefault(); return; }
+    const row = e.target.closest('tr');
+    if (!row) return;
+    dragging = row;
+    setTimeout(() => row.classList.add('row-dragging'), 0);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  tbody.addEventListener('dragover', e => {
+    if (!dragging) return;
+    e.preventDefault();
+    const row = e.target.closest('tr');
+    if (!row || row === dragging || row.closest('tbody') !== tbody) return;
+    const rect = row.getBoundingClientRect();
+    if (e.clientY < rect.top + rect.height / 2) tbody.insertBefore(dragging, row);
+    else tbody.insertBefore(dragging, row.nextSibling);
+  });
+  tbody.addEventListener('dragend', () => {
+    if (dragging) dragging.classList.remove('row-dragging');
+    dragging = null;
+  });
+}
+
 function renderTimingTemplatesEditor() {
   const container = document.getElementById('impostazioni-timing');
   if (!container) return;
@@ -2498,39 +2548,44 @@ function renderTimingTemplatesEditor() {
   }
 
   container.innerHTML = Object.entries(TIMING_DATA).map(([key, recipe]) => {
-    const stepsHTML = recipe.steps.map((step) => `
-      <tr>
-        <td><input type="text" class="timing-step-name-input" data-key="${key}" value="${(step.name || '').replace(/"/g, '&quot;')}" placeholder="Nome step"></td>
-        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="inverno" min="0" step="1" value="${step.inverno}" style="width:60px"></td>
-        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="estate" min="0" step="1" value="${step.estate}" style="width:60px"></td>
-        <td><input type="text" class="timing-step-note-input" data-key="${key}" value="${(step.note || '').replace(/"/g, '&quot;')}" placeholder="—"></td>
-        <td style="text-align:center;font-size:.8rem">${step.parallel ? '✓' : ''}</td>
-        <td><button class="btn-remove-step" data-key="${key}" title="Rimuovi step" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:.9rem;padding:2px 6px;line-height:1">✕</button></td>
-      </tr>`).join('');
+    const stepsHTML = recipe.steps.map(step => makeStepRow(key, step, false)).join('');
     return `
-      <div class="timing-template-card">
+      <div class="timing-template-card locked" data-key="${key}">
         <div class="timing-template-header">
-          <span>${recipe.emoji} ${recipe.name}</span>
-          <button class="btn btn-sm btn-primary btn-save-timing" data-key="${key}">💾 Salva</button>
+          <span>${recipe.emoji || ''} ${recipe.name}</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-danger btn-delete-timing" data-key="${key}">🗑 Elimina</button>
+            <button class="btn btn-sm btn-secondary btn-edit-timing" data-key="${key}">✏️ Modifica</button>
+            <button class="btn btn-sm btn-primary btn-save-timing" data-key="${key}" style="display:none">💾 Salva</button>
+          </div>
         </div>
         <table class="timing-table">
           <thead>
-            <tr><th>Step</th><th>Inverno (min)</th><th>Estate (min)</th><th>Note</th><th>⚡</th><th></th></tr>
+            <tr><th style="width:24px"></th><th>Step</th><th>Inverno (min)</th><th>Estate (min)</th><th>Note</th><th>⚡</th><th style="width:28px"></th></tr>
           </thead>
           <tbody>${stepsHTML}</tbody>
         </table>
-        <div style="padding:8px 12px;border-top:1px solid var(--border)">
+        <div class="add-step-footer" style="padding:8px 12px;border-top:1px solid var(--border);display:none">
           <button class="btn btn-sm btn-secondary btn-add-step" data-key="${key}">＋ Aggiungi Step</button>
         </div>
       </div>`;
   }).join('');
 
-  // ── Save handler ──────────────────────────────────────────────────────────
-  container.querySelectorAll('.btn-save-timing').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const key = btn.dataset.key;
+  // ── Event delegation ──────────────────────────────────────────────────────
+  container.addEventListener('click', async e => {
+    // Modifica → unlock
+    const editBtn = e.target.closest('.btn-edit-timing');
+    if (editBtn) {
+      setCardEditMode(editBtn.closest('.timing-template-card'), true);
+      return;
+    }
+
+    // Salva → persist + lock
+    const saveBtn = e.target.closest('.btn-save-timing');
+    if (saveBtn) {
+      const key = saveBtn.dataset.key;
       const recipe = TIMING_DATA[key];
-      const card = btn.closest('.timing-template-card');
+      const card = saveBtn.closest('.timing-template-card');
       const rows = card.querySelectorAll('tbody tr');
       const updatedSteps = Array.from(rows).map((row, i) => ({
         name: row.querySelector('.timing-step-name-input')?.value.trim() || '',
@@ -2542,43 +2597,58 @@ function renderTimingTemplatesEditor() {
       try {
         await api('PUT', `/api/timing-templates/${key}`, { steps: updatedSteps });
         TIMING_DATA[key].steps = updatedSteps;
+        setCardEditMode(card, false);
         toast(`Tempistiche ${recipe.name} salvate!`, 'success');
-      } catch (e) {
+      } catch (_e) {
         toast('Errore salvataggio tempistiche', 'error');
       }
-    });
-  });
-
-  // ── Remove step handler (delegated) ──────────────────────────────────────
-  container.addEventListener('click', e => {
-    const removeBtn = e.target.closest('.btn-remove-step');
-    if (!removeBtn) return;
-    const tbody = removeBtn.closest('tr').closest('tbody');
-    if (tbody.rows.length <= 1) {
-      toast('Deve esserci almeno uno step', 'error');
       return;
     }
-    removeBtn.closest('tr').remove();
+
+    // Elimina template
+    const deleteBtn = e.target.closest('.btn-delete-timing');
+    if (deleteBtn) {
+      const key = deleteBtn.dataset.key;
+      const name = TIMING_DATA[key]?.name || key;
+      if (!confirm(`Eliminare il template "${name}"?\nQuesta azione non può essere annullata.`)) return;
+      try {
+        await api('DELETE', `/api/timing-templates/${key}`);
+        delete TIMING_DATA[key];
+        renderTimingTemplatesEditor();
+        toast(`Template "${name}" eliminato`, 'success');
+      } catch (_e) {
+        toast('Errore durante l\'eliminazione', 'error');
+      }
+      return;
+    }
+
+    // Rimuovi step
+    const removeBtn = e.target.closest('.btn-remove-step');
+    if (removeBtn) {
+      const tbody = removeBtn.closest('tr').closest('tbody');
+      if (tbody.rows.length <= 1) { toast('Deve esserci almeno uno step', 'error'); return; }
+      removeBtn.closest('tr').remove();
+      return;
+    }
   });
 
-  // ── Add step handler ──────────────────────────────────────────────────────
+  // ── Add step ──────────────────────────────────────────────────────────────
   container.querySelectorAll('.btn-add-step').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.key;
       const card = btn.closest('.timing-template-card');
       const tbody = card.querySelector('tbody');
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="text" class="timing-step-name-input" data-key="${key}" value="" placeholder="Nome step"></td>
-        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="inverno" min="0" step="1" value="60" style="width:60px"></td>
-        <td><input type="number" class="timing-step-input" data-key="${key}" data-field="estate" min="0" step="1" value="60" style="width:60px"></td>
-        <td><input type="text" class="timing-step-note-input" data-key="${key}" value="" placeholder="—"></td>
-        <td></td>
-        <td><button class="btn-remove-step" data-key="${key}" title="Rimuovi step" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:.9rem;padding:2px 6px;line-height:1">✕</button></td>`;
+      const blankStep = { name: '', inverno: 60, estate: 60, note: '', parallel: false };
+      const div = document.createElement('tbody');
+      div.innerHTML = makeStepRow(key, blankStep, true);
+      const tr = div.querySelector('tr');
       tbody.appendChild(tr);
       tr.querySelector('.timing-step-name-input').focus();
     });
   });
+
+  // ── Drag-and-drop per ogni tbody ──────────────────────────────────────────
+  container.querySelectorAll('tbody').forEach(setupRowDnD);
 }
 
 // ── Global button wires ───────────────────────────────────────────────────────
