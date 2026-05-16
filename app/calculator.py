@@ -138,7 +138,7 @@ def calc_party(
     )
 
     variants_out = []
-    shopping_totals: dict[str, float] = {}
+    shopping_totals: dict[str, dict] = {}
 
     for vq in variant_quantities:
         count = vq.get("count", 0)
@@ -156,18 +156,25 @@ def calc_party(
                 t.get("fiber_per100"),
             )
             total_g = round(qty * count, 1)
+            cost_per100 = t.get("cost_per100") or 0
+            cost_per_pizza = round(cost_per100 / 100 * qty, 4)
             topping_details.append({
                 "name": t["name"],
                 "quantity_g_per_pizza": round(qty, 1),
                 "total_g": total_g,
                 "kcal_per_pizza": macros["kcal"],
                 "macros_per_pizza": macros,
+                "cost_per_pizza": cost_per_pizza,
             })
             key = t["name"]
-            shopping_totals[key] = round(shopping_totals.get(key, 0) + total_g, 1)
+            if key not in shopping_totals:
+                shopping_totals[key] = {"total_g": 0.0, "cost_total": 0.0}
+            shopping_totals[key]["total_g"] = round(shopping_totals[key]["total_g"] + total_g, 1)
+            shopping_totals[key]["cost_total"] += cost_per100 / 100 * total_g
 
         per_pizza = sum_macros([td["macros_per_pizza"] for td in topping_details])
         per_portion = {k: round(v / portion_denominator, 1) for k, v in per_pizza.items()}
+        cost_per_pizza = round(sum(td["cost_per_pizza"] for td in topping_details), 2)
 
         variants_out.append({
             "variant_id": vq["variant_id"],
@@ -176,10 +183,12 @@ def calc_party(
             "toppings": topping_details,
             "per_pizza_macros": per_pizza,
             "per_portion_macros": per_portion,
+            "cost_per_pizza": cost_per_pizza,
         })
 
     shopping_list = sorted(
-        [{"name": k, "total_g": v} for k, v in shopping_totals.items()],
+        [{"name": k, "total_g": v["total_g"], "cost_total": round(v["cost_total"], 2)}
+         for k, v in shopping_totals.items()],
         key=lambda x: x["total_g"],
         reverse=True,
     )

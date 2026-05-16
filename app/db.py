@@ -128,6 +128,14 @@ def init_db():
             except Exception:
                 pass
 
+        for col, coldef in [
+            ("cost_per100", "REAL DEFAULT 0"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE ingredients ADD COLUMN {col} {coldef}")
+            except Exception:
+                pass
+
         for col in ["description"]:
             try:
                 conn.execute(f"ALTER TABLE variants ADD COLUMN {col} TEXT")
@@ -464,12 +472,12 @@ def get_ingredient(ingredient_id: int):
 def create_ingredient(data: dict) -> int:
     with get_conn() as conn:
         cur = conn.execute("""
-            INSERT INTO ingredients (name, kcal_per100, protein_per100, carbs_per100, fat_per100, fiber_per100, sort_order)
-            VALUES (?,?,?,?,?,?,?)
+            INSERT INTO ingredients (name, kcal_per100, protein_per100, carbs_per100, fat_per100, fiber_per100, cost_per100, sort_order)
+            VALUES (?,?,?,?,?,?,?,?)
         """, (
             data["name"], data.get("kcal_per100", 0), data.get("protein_per100", 0),
             data.get("carbs_per100", 0), data.get("fat_per100", 0),
-            data.get("fiber_per100", 0), data.get("sort_order", 0)
+            data.get("fiber_per100", 0), data.get("cost_per100", 0), data.get("sort_order", 0)
         ))
         return cur.lastrowid
 
@@ -478,12 +486,12 @@ def update_ingredient(ingredient_id: int, data: dict):
     with get_conn() as conn:
         conn.execute("""
             UPDATE ingredients SET
-              name=?, kcal_per100=?, protein_per100=?, carbs_per100=?, fat_per100=?, fiber_per100=?
+              name=?, kcal_per100=?, protein_per100=?, carbs_per100=?, fat_per100=?, fiber_per100=?, cost_per100=?
             WHERE id=?
         """, (
             data["name"], data.get("kcal_per100", 0), data.get("protein_per100", 0),
             data.get("carbs_per100", 0), data.get("fat_per100", 0),
-            data.get("fiber_per100", 0), ingredient_id
+            data.get("fiber_per100", 0), data.get("cost_per100", 0), ingredient_id
         ))
         # Propagate name and macros to all toppings linked to this ingredient (preserve quantity_g)
         conn.execute("""

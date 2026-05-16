@@ -1791,6 +1791,7 @@ function renderMenuIngredienti() {
     const rows = allIngredients.map(ing => `
       <tr>
         <td>${ing.name}</td>
+        <td class="num">${ing.cost_per100 ? `€${ing.cost_per100.toFixed(2)}` : '—'}</td>
         <td class="num">${ing.kcal_per100 != null ? fmt(ing.kcal_per100) : '—'}</td>
         <td class="num">${ing.protein_per100 != null ? fmt(ing.protein_per100, 1) : '—'}</td>
         <td class="num">${ing.carbs_per100 != null ? fmt(ing.carbs_per100, 1) : '—'}</td>
@@ -1807,6 +1808,7 @@ function renderMenuIngredienti() {
       <table class="ingredient-table">
         <thead><tr>
           <th>Nome</th>
+          <th class="num">€/100g</th>
           <th class="num">kcal/100g</th>
           <th class="num">Prot. (g)</th>
           <th class="num">Carbs. (g)</th>
@@ -1885,7 +1887,7 @@ function openNewIngredient() {
   document.getElementById('modal-ingredient-title').textContent = 'Aggiungi Ingrediente';
   document.getElementById('ingredient-id-field').value = '';
   document.getElementById('if-name').value = '';
-  ['if-kcal', 'if-protein', 'if-carbs', 'if-fat', 'if-fiber'].forEach(id => {
+  ['if-cost', 'if-kcal', 'if-protein', 'if-carbs', 'if-fat', 'if-fiber'].forEach(id => {
     document.getElementById(id).value = 0;
   });
   openModal('modal-ingredient');
@@ -1897,6 +1899,7 @@ function openEditIngredient(ingredientId) {
   document.getElementById('modal-ingredient-title').textContent = 'Modifica Ingrediente';
   document.getElementById('ingredient-id-field').value = ing.id;
   document.getElementById('if-name').value = ing.name;
+  document.getElementById('if-cost').value = ing.cost_per100 ?? 0;
   document.getElementById('if-kcal').value = ing.kcal_per100 ?? 0;
   document.getElementById('if-protein').value = ing.protein_per100 ?? 0;
   document.getElementById('if-carbs').value = ing.carbs_per100 ?? 0;
@@ -1912,6 +1915,7 @@ async function saveIngredient() {
 
   const body = {
     name,
+    cost_per100:    parseFloat(document.getElementById('if-cost').value)    || 0,
     kcal_per100:    parseFloat(document.getElementById('if-kcal').value)    || 0,
     protein_per100: parseFloat(document.getElementById('if-protein').value) || 0,
     carbs_per100:   parseFloat(document.getElementById('if-carbs').value)   || 0,
@@ -2226,7 +2230,10 @@ function partyVariantCardHTML(v, portionDenom = 4) {
     const portRow = hasMacros ? `<tr style="color:var(--text-3);font-size:.78rem"><td>1/${portionDenom} pizza</td><td></td><td class="num">${fmt(p.kcal)}</td><td class="num">${fmt(p.protein_g,1)}</td><td class="num">${fmt(p.carbs_g,1)}</td><td class="num">${fmt(p.fat_g,1)}</td><td class="num">${fmt(p.fiber_g,1)}</td></tr>` : '';
     tableHTML = `<table class="macro-table" style="font-size:.78rem"><thead><tr><th>Ingrediente</th><th class="num">g/pizza</th>${hasMacros ? '<th class="num">kcal</th><th class="num">Prot.</th><th class="num">Carbs.</th><th class="num">Grassi</th><th class="num">Fibre</th>' : ''}</tr></thead><tbody>${bodyRows}${totRow}${portRow}</tbody></table>`;
   }
-  return `<div class="variant-result-card"><div class="variant-result-header"><span>${v.name}</span><span style="color:var(--text-3);font-size:.78rem;font-weight:400">${v.count} pizza${v.count>1?'e':''}</span></div><div class="variant-result-body">${tableHTML}</div></div>`;
+  const costHTML = (v.cost_per_pizza > 0)
+    ? `<div style="margin-top:6px;font-size:.78rem;color:var(--text-2)">💰 €${v.cost_per_pizza.toFixed(2)} / pizza</div>`
+    : '';
+  return `<div class="variant-result-card"><div class="variant-result-header"><span>${v.name}</span><span style="color:var(--text-3);font-size:.78rem;font-weight:400">${v.count} pizza${v.count>1?'e':''}</span></div><div class="variant-result-body">${tableHTML}${costHTML}</div></div>`;
 }
 
 function doughTableHTML(d) {
@@ -2262,12 +2269,17 @@ function renderPartyResults(outcomes) {
   outcomes.forEach(({ result }) => {
     if (!result) return;
     (result.shopping_list || []).forEach(s => {
-      shoppingTotals[s.name] = (shoppingTotals[s.name] || 0) + s.total_g;
+      if (!shoppingTotals[s.name]) shoppingTotals[s.name] = { g: 0, cost: 0 };
+      shoppingTotals[s.name].g += s.total_g;
+      shoppingTotals[s.name].cost += (s.cost_total || 0);
     });
   });
-  const combined = Object.entries(shoppingTotals).sort((a, b) => b[1] - a[1]);
+  const combined = Object.entries(shoppingTotals).sort((a, b) => b[1].g - a[1].g);
   const shoppingHTML = combined.length
-    ? combined.map(([name, g]) => `<div class="shopping-item"><span>${name}</span><span class="shopping-weight">${fmtG(Math.round(g * 10) / 10)}</span></div>`).join('')
+    ? combined.map(([name, data]) => {
+        const costStr = data.cost > 0 ? ` · <span style="color:var(--text-2)">€${data.cost.toFixed(2)}</span>` : '';
+        return `<div class="shopping-item"><span>${name}</span><span class="shopping-weight">${fmtG(Math.round(data.g * 10) / 10)}${costStr}</span></div>`;
+      }).join('')
     : `<p style="color:var(--text-3);font-size:.82rem">Nessun condimento con quantità.</p>`;
 
   // Per-recipe sections

@@ -243,6 +243,7 @@ class IngredientBody(BaseModel):
     carbs_per100: float = 0.0
     fat_per100: float = 0.0
     fiber_per100: float = 0.0
+    cost_per100: float = 0.0
     sort_order: int = 0
 
 
@@ -395,11 +396,16 @@ def pizza_party(body: PartyRequest):
     if not recipe:
         raise HTTPException(404, "Ricetta non trovata")
 
+    ingredients_cost = {i["id"]: i.get("cost_per100") or 0 for i in db.get_ingredients()}
+
     vq_list = []
     for vq in body.variant_quantities:
         variant = db.get_variant(vq.variant_id)
         if not variant:
             continue
+        for t in variant["toppings"]:
+            if t.get("ingredient_id"):
+                t["cost_per100"] = ingredients_cost.get(t["ingredient_id"], 0)
         vq_list.append({
             "variant_id": vq.variant_id,
             "count": vq.count,
