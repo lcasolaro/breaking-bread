@@ -51,6 +51,8 @@ class RecipeBody(BaseModel):
     recipe_type: str = "pizza"
     flour_mix: Optional[dict] = None
     timing_template_key: Optional[str] = None
+    lm_pct: float = 0.0
+    lm_hydration_pct: float = 60.0
 
 
 @app.get("/api/recipes")

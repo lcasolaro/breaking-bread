@@ -211,7 +211,9 @@ async function toggleRecipeDetails(btn) {
 
 function recipeDetailsHTML(recipe, editMode = false) {
   const extras  = recipe.extra_ingredients || [];
-  const isOther = (recipe.recipe_type || 'pizza') === 'other';
+  const rtype   = recipe.recipe_type || 'pizza';
+  const isOther = rtype === 'other' || rtype === 'brioche';
+  const isPane  = rtype === 'pane';
   const fm      = recipe.flour_mix || {};
 
   const flourMixRows = (sec, calcPrefix) => {
@@ -304,6 +306,10 @@ function recipeDetailsHTML(recipe, editMode = false) {
       <label>AUTOLISI (%)</label>
       ${pMain('autolisi', recipe.autolisi_pct, 'min="0" max="100" step="5"')}
     </div>`}
+    ${isPane ? `<div class="param-field">
+      <label>Lievito Madre (%)</label>
+      ${pMain('lm', recipe.lm_pct ?? 0, 'min="0" max="100" step="5"')}
+    </div>` : ''}
   </div>
   <div class="params-summary">
     <div class="summary-item">
@@ -344,6 +350,27 @@ function recipeDetailsHTML(recipe, editMode = false) {
     </div>
     ${extraRowsForSection('biga')}
   </div>`}
+  ${isPane && (recipe.lm_pct > 0) ? `<div class="prep-section" id="prep-lm-${recipe.id}">
+    <div class="prep-section-header lm">
+      <span>Lievito Madre</span>
+      <span class="header-flour" data-calc="lm-total">—</span>
+    </div>
+    <div class="prep-row">
+      <span>Starter totale</span>
+      <span class="prep-row-pct">${pMain('lm', recipe.lm_pct ?? 0, 'min="0" max="100" step="5"')}</span>
+      <span class="prep-row-grams" data-calc="lm-weight">—</span>
+    </div>
+    <div class="prep-row prep-flour-sub">
+      <span>↳ Farina nel starter ${recipe.lm_hydration_pct ?? 60}%</span>
+      <span></span>
+      <span class="prep-row-grams" data-calc="lm-flour">—</span>
+    </div>
+    <div class="prep-row prep-flour-sub">
+      <span>↳ Acqua nel starter ${100 - (recipe.lm_hydration_pct ?? 60)}%</span>
+      <span></span>
+      <span class="prep-row-grams" data-calc="lm-water">—</span>
+    </div>
+  </div>` : ''}
   <div class="prep-section" id="prep-poolish-${recipe.id}">
     <div class="prep-section-header poolish">
       <span>Poolish/Yudane</span>
@@ -472,8 +499,15 @@ function onParamChange(recipeId, recipe) {
   const availableW    = Math.max(0, waterTotal - bigaW - poolishW);
   const autolisiW     = Math.min(autolisiF * autolisiAcqua / 100, availableW);
 
-  const chiusuraF = Math.max(0, flour - bigaF - poolishF - autolisiF);
-  const chiusuraW = Math.max(0, waterTotal - bigaW - poolishW - autolisiW);
+  const isPane    = (recipe.recipe_type || 'pizza') === 'pane';
+  const lmPct     = isPane ? getMain('lm') : 0;
+  const lmHydPct  = recipe.lm_hydration_pct ?? 60;
+  const lmWeight  = flour * lmPct / 100;
+  const lmFlour   = lmWeight * lmHydPct / 100;
+  const lmWater   = lmWeight - lmFlour;
+
+  const chiusuraF = Math.max(0, flour - bigaF - poolishF - autolisiF - lmFlour);
+  const chiusuraW = Math.max(0, waterTotal - bigaW - poolishW - autolisiW - lmWater);
 
   const chiusuraSale     = getSec('chiusura-sale');
   const chiusuraTotalLiev= getSec('chiusura-lievito');
@@ -505,6 +539,11 @@ function onParamChange(recipeId, recipe) {
     else if (section === 'autolisi') extrasAutolisi += g;
     else extrasChiusura += g;
   });
+
+  set('lm-weight', lmWeight);
+  set('lm-flour',  lmFlour);
+  set('lm-water',  lmWater);
+  set('lm-total',  lmWeight);
 
   set('biga-flour',  bigaF);
   set('biga-water',  bigaW);
@@ -589,6 +628,8 @@ async function saveRecipeParamsInline(details, recipe) {
     recipe_type: recipe.recipe_type || 'pizza',
     flour_mix: recipe.flour_mix || null,
     timing_template_key: recipe.timing_template_key || null,
+    lm_pct:           recipe.lm_pct ?? 0,
+    lm_hydration_pct: recipe.lm_hydration_pct ?? 60,
   };
   try {
     await api('PUT', `/api/recipes/${recipe.id}`, payload);
@@ -615,6 +656,8 @@ function openNewRecipe() {
   document.getElementById('rf-description').value = '';
   document.getElementById('rf-notes').value = '';
   document.getElementById('rf-type').value = 'pizza';
+  document.getElementById('rf-lm-pct').value = 0;
+  document.getElementById('rf-lm-hydration').value = 60;
   populateTimingKeySelect(null);
   document.getElementById('rf-pieces').value = 6;
   document.getElementById('rf-ball').value = 255;
@@ -664,6 +707,8 @@ async function openEditRecipe(recipeId) {
     document.getElementById('recipe-params-section').style.display = '';
     const rtype = r.recipe_type || 'pizza';
     document.getElementById('rf-type').value = rtype;
+    document.getElementById('rf-lm-pct').value = r.lm_pct ?? 0;
+    document.getElementById('rf-lm-hydration').value = r.lm_hydration_pct ?? 60;
     populateTimingKeySelect(r.timing_template_key || null);
     resetFlourMixInputs(r.flour_mix);
     updateRecipeTypeUI(rtype);
@@ -732,6 +777,8 @@ async function saveRecipe() {
     recipe_type: document.getElementById('rf-type').value || 'pizza',
     flour_mix: collectFlourMix(),
     timing_template_key: document.getElementById('rf-timing-key').value || null,
+    lm_pct:           parseFloat(document.getElementById('rf-lm-pct').value) || 0,
+    lm_hydration_pct: parseFloat(document.getElementById('rf-lm-hydration').value) || 60,
   };
 
   try {
@@ -751,7 +798,8 @@ async function saveRecipe() {
 // ── Recipe type UI ────────────────────────────────────────────────────────────
 
 function updateRecipeTypeUI(type) {
-  const isOther = type === 'other';
+  const isOther = type === 'other' || type === 'brioche';
+  const isPane  = type === 'pane';
   const bigaOnlyIds = ['rf-biga-hydration-group', 'rf-biga-yeast-group', 'rf-autolisi-group', 'rf-autolisi-water-row', 'rf-flour-biga-row', 'rf-flour-autolisi-row'];
   bigaOnlyIds.forEach(id => {
     const el = document.getElementById(id);
@@ -763,6 +811,8 @@ function updateRecipeTypeUI(type) {
     if (groups[0]) groups[0].style.display = isOther ? 'none' : '';
     if (groups[2]) groups[2].style.display = isOther ? 'none' : '';
   }
+  const lmSection = document.getElementById('rf-lm-section');
+  if (lmSection) lmSection.style.display = isPane ? '' : 'none';
 }
 
 document.getElementById('rf-type')?.addEventListener('change', e => updateRecipeTypeUI(e.target.value));

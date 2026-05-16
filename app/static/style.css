@@ -726,6 +726,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .prep-section-header.poolish  { background: var(--poolish); }
 .prep-section-header.autolisi { background: var(--autolisi); }
 .prep-section-header.chiusura { background: var(--accent); }
+.prep-section-header.lm       { background: #f0e8d4; color: #7a5c2e; }
 
 .prep-section-header .header-flour {
   font-weight: 400;

@@ -4,6 +4,25 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-16 (v7 — Tipo Pane + Lievito Madre)
+
+### Tipo ricetta Pane
+Il selettore "Tipo ricetta" nel form ora ha tre opzioni: 🍕 Pizza / Focaccia, 🍞 Pane, 🥐 Brioche / Dolci. Il tipo "Pane" mostra tutte le sezioni (BIGA, Poolish/Yudane, AUTOLISI) e in aggiunta la sezione Lievito Madre. Il tipo "Brioche / Dolci" sostituisce il precedente "Altro" conservando lo stesso comportamento (BIGA e AUTOLISI nascoste). Le ricette esistenti con `recipe_type = 'other'` continuano a funzionare.
+
+### Lievito Madre
+Per le ricette di tipo Pane, è possibile specificare:
+- **Lievito Madre (% su farina tot.)** — il peso totale del starter come percentuale della farina totale. Es. 20% = 200 g di starter per 1 kg di farina.
+- **% Farina nel starter** — la percentuale del peso del starter che è farina (default 60%). Il resto è acqua. Es. su 200g starter: farina = 120g, acqua = 80g.
+
+La sezione Lievito Madre nel dettaglio ricetta mostra: peso totale starter, farina nel starter, acqua nel starter. La farina e l'acqua del lievito madre vengono **sottratte dal bilancio della Chiusura**, esattamente come avviene per BIGA e Poolish.
+
+Formula: `lm_starter = lm_pct% × farina_totale`, `lm_farina = lm_starter × (% farina/100)`, `lm_acqua = lm_starter − lm_farina`.
+
+### Nuovi campi DB
+Aggiunte colonne `lm_pct REAL DEFAULT 0` e `lm_hydration_pct REAL DEFAULT 60` alla tabella `recipes` via migration inline.
+
+---
+
 ## 2026-05-14 (v6 — Impostazioni, tempistiche editabili, tipi farina, tipi ricetta, nota)
 
 ### Tag release

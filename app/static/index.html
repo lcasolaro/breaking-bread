@@ -202,7 +202,8 @@
           <label>Tipo ricetta</label>
           <select id="rf-type">
             <option value="pizza">🍕 Pizza / Focaccia</option>
-            <option value="other">🍞 Altro (Brioche, Pane…)</option>
+            <option value="pane">🍞 Pane</option>
+            <option value="brioche">🥐 Brioche / Dolci</option>
           </select>
         </div>
       </div>
@@ -240,6 +241,21 @@
           <div class="form-group"><label>Acqua AUTOLISI (%, 0=idrat.)</label><input type="number" id="rf-autolisi-water" min="0" max="100" step="1" value="0"></div>
           <div class="form-group"></div>
           <div class="form-group"></div>
+        </div>
+        <!-- Lievito Madre (solo per tipo Pane) -->
+        <div id="rf-lm-section" style="display:none">
+          <div class="params-section-label" style="margin-top:8px">Lievito Madre</div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Lievito Madre (% su farina tot.)</label>
+              <input type="number" id="rf-lm-pct" min="0" max="100" step="5" value="0">
+            </div>
+            <div class="form-group">
+              <label>% Farina nel starter</label>
+              <input type="number" id="rf-lm-hydration" min="0" max="100" step="5" value="60">
+            </div>
+            <div class="form-group"></div>
+          </div>
         </div>
         <div class="params-section-label" style="margin-top:8px">Chiusura Impasto</div>
         <div class="form-row-3">
