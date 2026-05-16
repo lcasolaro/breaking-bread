@@ -4,6 +4,22 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-16 (v7.3 — Liquid Glass Redesign + Fix lista spesa + Fix Tempistiche)
+
+### Redesign interfaccia: Apple Liquid Glass
+Intera UI ridisegnata in stile "cool glass" neutro ispirato ad Apple. Palette calda marrone/arancio sostituita con toni blu/grigio su sfondo gradiente. `backdrop-filter: blur()` su tutte le superfici card, pannelli risultati, modal e header. Nuovi token CSS in `:root`: `--bg-gradient`, `--bg-card` (rgba), `--bg-header` (scuro traslucido), `--blur` / `--blur-sm` / `--blur-lg`, `--radius-xl`. Accent color: `#0077CC` (Apple blue). Biga/Poolish/Autolisi ora hanno colori distinti (viola, teal, verde).
+
+### Fix: modal "Aggiungi Template Pianificatore"
+Il div interno del modal `modal-new-timing` usava `class="modal-card"` (classe inesistente in CSS), rendendo il modal trasparente. Corretto in `class="modal" style="max-width:480px"`.
+
+### Fix: lista spesa Pizza Party in colonne separate
+La lista spesa condimenti ora è una tabella HTML (`<table class="shopping-table">`) con colonne **Ingrediente / Grammi / Costo** separate e una riga **Totale** in fondo. La colonna Costo appare solo se almeno un ingrediente ha costo impostato. Aggiornato anche `formatSharedText()` per usare la stessa struttura dati `{g, cost}`.
+
+### Fix: Tempistiche non caricate in Impostazioni
+`TIMING_DATA` era caricato solo in `initPlanner()`. Se l'utente non visitava la tab Pianificatore, Impostazioni > Tempistiche mostrava un editor vuoto. Ora `loadTimingTemplates()` viene chiamato sia in `renderImpostazioniTab()` (quando la view attiva è "tempistiche") sia in `switchSettingsView()` quando si seleziona la tab Tempistiche.
+
+---
+
 ## 2026-05-16 (v7.1 — Template Pane nel Pianificatore + Lock modale)
 
 ### Template Pane nel Pianificatore

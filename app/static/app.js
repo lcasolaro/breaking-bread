@@ -2275,12 +2275,35 @@ function renderPartyResults(outcomes) {
     });
   });
   const combined = Object.entries(shoppingTotals).sort((a, b) => b[1].g - a[1].g);
-  const shoppingHTML = combined.length
-    ? combined.map(([name, data]) => {
-        const costStr = data.cost > 0 ? ` · <span style="color:var(--text-2)">€${data.cost.toFixed(2)}</span>` : '';
-        return `<div class="shopping-item"><span>${name}</span><span class="shopping-weight">${fmtG(Math.round(data.g * 10) / 10)}${costStr}</span></div>`;
-      }).join('')
-    : `<p style="color:var(--text-3);font-size:.82rem">Nessun condimento con quantità.</p>`;
+  const hasCost = combined.some(([, d]) => d.cost > 0);
+  let shoppingHTML;
+  if (combined.length) {
+    const totalG = combined.reduce((s, [, d]) => s + d.g, 0);
+    const totalCost = combined.reduce((s, [, d]) => s + d.cost, 0);
+    const rows = combined.map(([name, data]) => `
+      <tr>
+        <td>${name}</td>
+        <td class="shopping-g">${fmtG(Math.round(data.g * 10) / 10)}</td>
+        ${hasCost ? `<td class="shopping-cost">${data.cost > 0 ? '€' + data.cost.toFixed(2) : '—'}</td>` : ''}
+      </tr>`).join('');
+    const totalRow = `
+      <tr class="shopping-total-row">
+        <td>Totale</td>
+        <td class="shopping-g">${fmtG(Math.round(totalG * 10) / 10)}</td>
+        ${hasCost ? `<td class="shopping-cost">${totalCost > 0 ? '€' + totalCost.toFixed(2) : '—'}</td>` : ''}
+      </tr>`;
+    shoppingHTML = `<table class="shopping-table">
+      <thead><tr>
+        <th>Ingrediente</th>
+        <th style="text-align:right">Grammi</th>
+        ${hasCost ? '<th style="text-align:right">Costo</th>' : ''}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot>${totalRow}</tfoot>
+    </table>`;
+  } else {
+    shoppingHTML = `<p style="color:var(--text-3);font-size:.82rem">Nessun condimento con quantità.</p>`;
+  }
 
   // Per-recipe sections
   const recipeSections = outcomes.map(({ recipe, result, error }) => {
@@ -2326,13 +2349,18 @@ function formatSharedText(outcomes, timelines) {
     outcomes.forEach(({ result }) => {
       if (!result) return;
       (result.shopping_list || []).forEach(s => {
-        shoppingTotals[s.name] = (shoppingTotals[s.name] || 0) + s.total_g;
+        if (!shoppingTotals[s.name]) shoppingTotals[s.name] = { g: 0, cost: 0 };
+        shoppingTotals[s.name].g += s.total_g;
+        shoppingTotals[s.name].cost += (s.cost_total || 0);
       });
     });
-    const combined = Object.entries(shoppingTotals).sort((a, b) => b[1] - a[1]);
+    const combined = Object.entries(shoppingTotals).sort((a, b) => b[1].g - a[1].g);
     if (combined.length) {
       lines.push('══ LISTA DELLA SPESA ══');
-      combined.forEach(([name, g]) => lines.push(`☐ ${name}: ${Math.round(g)} g`));
+      combined.forEach(([name, data]) => {
+        const costStr = data.cost > 0 ? `  (€${data.cost.toFixed(2)})` : '';
+        lines.push(`☐ ${name}: ${Math.round(data.g)} g${costStr}`);
+      });
       lines.push('');
     }
   }
@@ -2420,6 +2448,7 @@ async function renderImpostazioniTab() {
   if (activeView === 'ingredienti') {
     renderMenuIngredienti();
   } else {
+    await loadTimingTemplates();
     renderTimingTemplatesEditor();
   }
 }
@@ -2429,7 +2458,7 @@ function switchSettingsView(view) {
   document.querySelectorAll('.settings-view').forEach(el => { el.style.display = 'none'; });
   document.getElementById(`settings-view-${view}`).style.display = '';
   if (view === 'ingredienti') renderMenuIngredienti();
-  else renderTimingTemplatesEditor();
+  else loadTimingTemplates().then(() => renderTimingTemplatesEditor());
 }
 
 document.querySelectorAll('.settings-subnav-btn').forEach(btn => {
