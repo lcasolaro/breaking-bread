@@ -1511,13 +1511,23 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .timing-template-card.locked .step-remove-cell { visibility: hidden; pointer-events: none; }
 .timing-step-name-input:disabled,
 .timing-step-input:disabled,
-.timing-step-note-input:disabled {
+.timing-step-note-input:disabled,
+.timing-name-input:disabled,
+.timing-emoji-input:disabled {
   background: transparent;
   border-color: transparent;
   cursor: default;
   color: var(--text-1);
 }
 .timing-step-note-input:disabled { color: var(--text-3); }
+.timing-name-input, .timing-emoji-input {
+  padding: 3px 6px;
+  border: 1px solid var(--border-md);
+  border-radius: 4px;
+  background: var(--bg-input);
+  font-family: inherit;
+  color: var(--text-1);
+}
 
 /* ── Flour Mix Form ───────────────────────────────────────────────────────── */
 

@@ -4,6 +4,29 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-16 (v7.7 — Bottone "Altro" orario, nome template editabile, sync macros/costi ingredienti)
+
+### UX: bottone "Altro" orario nel Pianificatore
+Quando si preme "Altro" nella selezione orario, il campo `<input type="time">` riceve focus immediato con default "20:00". Mentre l'utente modifica l'orario, la pill "Altro" si aggiorna in tempo reale mostrando il valore selezionato (es. "20:30") — questo è la conferma implicita della selezione, senza bisogno di premere un pulsante separato.
+
+### Tempistiche: modifica nome ed emoji dopo la creazione
+L'intestazione di ogni template ora contiene due campi input (`timing-emoji-input`, `timing-name-input`) che mostrano emoji e nome. In modalità **locked** appaiono come testo statico (bordi trasparenti, no background); in modalità **editing** diventano campi editabili. Il salvataggio (`PUT /api/timing-templates/{key}`) persiste anche nome ed emoji aggiornati.
+
+### Sync automatico macros/costo ingredienti su condimenti
+I condimenti (toppings) nella variante ricetta memorizzano una copia denormalizzata dei dati nutrizionali e del costo. Quando un ingrediente viene aggiornato nel DB, i condimenti collegati ora riflettono automaticamente i nuovi valori. Implementato con `_enrich_toppings(toppings, conn)` in `db.py`: al momento del fetch di una ricetta o variante, i valori `kcal_per100`, `protein_per100`, `carbs_per100`, `fat_per100`, `fiber_per100`, `cost_per100` vengono sovrascritti con i dati correnti dell'ingrediente tramite `ingredient_id` FK. Questo risolve anche i costi mancanti nella lista spesa Pizza Party per ingredienti il cui costo è stato aggiunto dopo la creazione del condimento.
+
+---
+
+## 2026-05-16 (v7.6 — Orario "Altro" editabile, rimozione "Connetti Google Calendar", auto-auth Google)
+
+### Fix: input orario "Altro" nel Pianificatore
+Il click su "Altro" mostrava un `<input type="time">` ma non era editabile (`onchange` invece di `oninput`). Corretto in `oninput` con default "20:00" e focus immediato: la timeline si ricalcola ad ogni modifica.
+
+### Rimozione pulsante "Connetti Google Calendar"
+Eliminato il pulsante esplicito di autenticazione. L'autenticazione avviene in automatico quando si preme "Crea eventi" via `prompt: ''` (silent re-auth se già autorizzato in precedenza nello stesso browser). Introdotto il pattern `pendingCalendarCallback` per accodare la chiamata `doCreateCalendarEvents()` da eseguire dopo la risposta OAuth.
+
+---
+
 ## 2026-05-16 (v7.5 — Tempistiche: lock/edit, riordino, elimina template + fix scroll modal)
 
 ### Fix scroll sfondo durante modal

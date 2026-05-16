@@ -396,16 +396,11 @@ def pizza_party(body: PartyRequest):
     if not recipe:
         raise HTTPException(404, "Ricetta non trovata")
 
-    ingredients_cost = {i["id"]: i.get("cost_per100") or 0 for i in db.get_ingredients()}
-
     vq_list = []
     for vq in body.variant_quantities:
-        variant = db.get_variant(vq.variant_id)
+        variant = db.get_variant(vq.variant_id)  # già arricchito con dati correnti ingredienti
         if not variant:
             continue
-        for t in variant["toppings"]:
-            if t.get("ingredient_id"):
-                t["cost_per100"] = ingredients_cost.get(t["ingredient_id"], 0)
         vq_list.append({
             "variant_id": vq.variant_id,
             "count": vq.count,
@@ -467,6 +462,8 @@ def update_timing_guide(guide_id: int, body: TimingBody):
 
 class TimingTemplateStepsBody(BaseModel):
     steps: list
+    name: Optional[str] = None
+    emoji: Optional[str] = None
 
 
 class TimingTemplateBody(BaseModel):
@@ -489,7 +486,7 @@ def create_timing_template(body: TimingTemplateBody):
 @app.put("/api/timing-templates/{key}")
 def update_timing_template(key: str, body: TimingTemplateStepsBody):
     import json as _json
-    db.update_timing_template(key, _json.dumps(body.steps))
+    db.update_timing_template(key, _json.dumps(body.steps), body.name, body.emoji)
     return {"ok": True}
 
 

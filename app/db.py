@@ -234,7 +234,7 @@ def get_recipe(recipe_id: int):
                 "SELECT * FROM toppings WHERE variant_id = ? ORDER BY sort_order, id",
                 (v["id"],)
             ).fetchall()
-            v["toppings"] = [dict(t) for t in toppings]
+            v["toppings"] = _enrich_toppings([dict(t) for t in toppings], conn)
             recipe["variants"].append(v)
 
         return recipe
@@ -352,7 +352,7 @@ def get_variant(variant_id: int):
             "SELECT * FROM toppings WHERE variant_id = ? ORDER BY sort_order, id",
             (variant_id,)
         ).fetchall()
-        v["toppings"] = [dict(t) for t in toppings]
+        v["toppings"] = _enrich_toppings([dict(t) for t in toppings], conn)
         return v
 
 
@@ -629,12 +629,36 @@ def get_timing_templates():
         return [dict(r) for r in rows]
 
 
-def update_timing_template(key: str, steps_json: str):
+def update_timing_template(key: str, steps_json: str, name: str = None, emoji: str = None):
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE timing_templates SET steps=? WHERE key=?",
-            (steps_json, key)
-        )
+        if name is not None:
+            conn.execute(
+                "UPDATE timing_templates SET steps=?, name=?, emoji=? WHERE key=?",
+                (steps_json, name, emoji or '', key)
+            )
+        else:
+            conn.execute(
+                "UPDATE timing_templates SET steps=? WHERE key=?",
+                (steps_json, key)
+            )
+
+
+def _enrich_toppings(toppings: list, conn) -> list:
+    ids = [t["ingredient_id"] for t in toppings if t.get("ingredient_id")]
+    if not ids:
+        return toppings
+    placeholders = ",".join("?" * len(ids))
+    ings = {row["id"]: dict(row) for row in conn.execute(
+        f"SELECT * FROM ingredients WHERE id IN ({placeholders})", ids
+    )}
+    for t in toppings:
+        ing = ings.get(t.get("ingredient_id"))
+        if not ing:
+            continue
+        for col in ("kcal_per100", "protein_per100", "carbs_per100", "fat_per100", "fiber_per100", "cost_per100"):
+            if ing.get(col) is not None:
+                t[col] = ing[col]
+    return toppings
 
 
 def delete_timing_template(key: str):

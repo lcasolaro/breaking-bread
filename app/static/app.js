@@ -2549,11 +2549,18 @@ function renderTimingTemplatesEditor() {
 
   container.innerHTML = Object.entries(TIMING_DATA).map(([key, recipe]) => {
     const stepsHTML = recipe.steps.map(step => makeStepRow(key, step, false)).join('');
+    const emojiVal = (recipe.emoji || '').replace(/"/g, '&quot;');
+    const nameVal = (recipe.name || '').replace(/"/g, '&quot;');
     return `
       <div class="timing-template-card locked" data-key="${key}">
         <div class="timing-template-header">
-          <span>${recipe.emoji || ''} ${recipe.name}</span>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+            <input type="text" class="timing-emoji-input" value="${emojiVal}" placeholder="🍕"
+              style="width:36px;text-align:center;font-size:1.1rem" disabled>
+            <input type="text" class="timing-name-input" value="${nameVal}" placeholder="Nome template"
+              style="font-weight:600;font-size:.92rem;flex:1;min-width:0" disabled>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
             <button class="btn btn-sm btn-danger btn-delete-timing" data-key="${key}">🗑 Elimina</button>
             <button class="btn btn-sm btn-secondary btn-edit-timing" data-key="${key}">✏️ Modifica</button>
             <button class="btn btn-sm btn-primary btn-save-timing" data-key="${key}" style="display:none">💾 Salva</button>
@@ -2594,11 +2601,15 @@ function renderTimingTemplatesEditor() {
         note: row.querySelector('.timing-step-note-input')?.value || '',
         parallel: recipe.steps[i]?.parallel ?? false,
       }));
+      const updatedName  = card.querySelector('.timing-name-input')?.value.trim() || recipe.name;
+      const updatedEmoji = card.querySelector('.timing-emoji-input')?.value.trim() || recipe.emoji || '';
       try {
-        await api('PUT', `/api/timing-templates/${key}`, { steps: updatedSteps });
+        await api('PUT', `/api/timing-templates/${key}`, { steps: updatedSteps, name: updatedName, emoji: updatedEmoji });
         TIMING_DATA[key].steps = updatedSteps;
+        TIMING_DATA[key].name  = updatedName;
+        TIMING_DATA[key].emoji = updatedEmoji;
         setCardEditMode(card, false);
-        toast(`Tempistiche ${recipe.name} salvate!`, 'success');
+        toast(`Template "${updatedName}" salvato!`, 'success');
       } catch (_e) {
         toast('Errore salvataggio tempistiche', 'error');
       }
@@ -2919,6 +2930,8 @@ function selectPlannerTime(timeStr) {
     if (!customInput.value) customInput.value = '20:00';
     customInput.oninput = (e) => {
       plannerState.time = e.target.value || null;
+      const altroPill = document.querySelector('#planner-time-pills [data-time="altro"]');
+      if (altroPill && e.target.value) altroPill.textContent = e.target.value;
       tryCalcPlannerTimeline();
     };
     plannerState.time = customInput.value || null;
