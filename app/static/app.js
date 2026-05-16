@@ -56,10 +56,6 @@ function sortToppingsCanonically(toppings) {
   });
 }
 
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
-});
-
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2426,6 +2422,30 @@ function switchSettingsView(view) {
 
 document.querySelectorAll('.settings-subnav-btn').forEach(btn => {
   btn.addEventListener('click', () => switchSettingsView(btn.dataset.view));
+});
+
+document.getElementById('btn-add-timing-template')?.addEventListener('click', () => {
+  document.getElementById('nt-key').value = '';
+  document.getElementById('nt-label').value = '';
+  document.getElementById('nt-color').value = '2';
+  openModal('modal-new-timing');
+});
+
+document.getElementById('btn-save-new-timing')?.addEventListener('click', async () => {
+  const key   = document.getElementById('nt-key').value.trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/gi, '');
+  const name  = document.getElementById('nt-label').value.trim();
+  const color = document.getElementById('nt-color').value;
+  if (!key || !name) { toast('Chiave ed etichetta sono obbligatorie', 'error'); return; }
+  const baseSteps = TIMING_DATA['pane']?.steps ? JSON.parse(JSON.stringify(TIMING_DATA['pane'].steps)) : [];
+  try {
+    await api('POST', '/api/timing-templates', { key, name, calendar_color_id: color, steps: baseSteps });
+    closeModal('modal-new-timing');
+    await loadTimingTemplates();
+    renderTimingTemplatesEditor();
+    toast(`Template "${name}" creato!`, 'success');
+  } catch (e) {
+    toast('Errore nella creazione del template', 'error');
+  }
 });
 
 function renderTimingTemplatesEditor() {

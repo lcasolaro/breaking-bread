@@ -629,6 +629,60 @@ def update_timing_template(key: str, steps_json: str):
         )
 
 
+def create_timing_template(key: str, name: str, calendar_color_id: str, steps: list) -> dict:
+    with get_conn() as conn:
+        max_sort = conn.execute("SELECT COALESCE(MAX(sort_order), 0) FROM timing_templates").fetchone()[0]
+        conn.execute(
+            """INSERT OR REPLACE INTO timing_templates
+               (key, name, emoji, calendar_color_id, service_label, service_event_name,
+                service_event_duration, steps, sort_order)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (key, name, '', calendar_color_id,
+             'Orario di uscita dal forno', f'{name} — Servizio',
+             0, json.dumps(steps), max_sort + 10)
+        )
+    return {"key": key, "name": name, "calendar_color_id": calendar_color_id, "steps": steps}
+
+
+def backfill_timing_templates():
+    _PANE_STEPS = [
+        {"name": "Rinfresco LM",      "inverno": 720, "estate": 480, "note": ""},
+        {"name": "Autolisi",           "inverno": 60,  "estate": 60,  "note": ""},
+        {"name": "Impasto",            "inverno": 30,  "estate": 30,  "note": ""},
+        {"name": "Puntata",            "inverno": 180, "estate": 120, "note": ""},
+        {"name": "Formatura",          "inverno": 20,  "estate": 20,  "note": ""},
+        {"name": "Apretto (frigo)",    "inverno": 720, "estate": 720, "note": ""},
+        {"name": "Pre-riscaldo forno", "inverno": 60,  "estate": 60,  "note": ""},
+        {"name": "Cottura",            "inverno": 50,  "estate": 45,  "note": ""},
+    ]
+    _missing = [
+        {
+            "key": "pane",
+            "name": "🍞 Pane",
+            "emoji": "🍞",
+            "calendar_color_id": "2",
+            "service_label": "Orario di uscita dal forno",
+            "service_event_name": "🍞 Pane pronto — Servizio",
+            "service_event_duration": 0,
+            "sort_order": 4,
+            "steps": json.dumps(_PANE_STEPS),
+        }
+    ]
+    with get_conn() as conn:
+        existing = {r[0] for r in conn.execute("SELECT key FROM timing_templates").fetchall()}
+        for t in _missing:
+            if t["key"] not in existing:
+                conn.execute(
+                    """INSERT INTO timing_templates
+                       (key, name, emoji, calendar_color_id, service_label,
+                        service_event_name, service_event_duration, steps, sort_order)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (t["key"], t["name"], t["emoji"], t["calendar_color_id"],
+                     t["service_label"], t["service_event_name"],
+                     t["service_event_duration"], t["steps"], t["sort_order"])
+                )
+
+
 # ── Import Log ────────────────────────────────────────────────────────────────
 
 def log_import(filename: str, recipes_imported: int, notes: str = ""):

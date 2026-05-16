@@ -4,6 +4,19 @@ Cronologia delle funzionalità aggiunte al progetto.
 
 ---
 
+## 2026-05-16 (v7.1 — Template Pane nel Pianificatore + Lock modale)
+
+### Template Pane nel Pianificatore
+Il Pianificatore ora include una card "🍞 Pane" con la relativa timeline. Il template viene aggiunto automaticamente al DB tramite `backfill_timing_templates()` in `db.py`, che esegue all'avvio e inserisce solo le chiavi mancanti (senza toccare quelle esistenti). Gli step di default del Pane sono: Rinfresco LM, Autolisi, Impasto, Puntata, Formatura, Apretto (frigo), Pre-riscaldo forno, Cottura.
+
+### Aggiungi Template (Impostazioni > Tempistiche)
+Nuovo pulsante "+ Aggiungi Template" nella schermata Impostazioni > Tempistiche. Apre un modal in cui si inseriscono chiave univoca, etichetta e colore Google Calendar. Gli step di partenza vengono clonati dal template Pane e sono modificabili subito dopo la creazione. Endpoint: `POST /api/timing-templates`.
+
+### Lock modale (no chiusura on click-outside)
+Premendo fuori dall'area di un modal (sull'overlay) il modal non si chiude più. Per chiudere un modal è necessario premere esplicitamente il pulsante ✕. Questo vale per tutti i modal dell'app (nuova ricetta, modifica ricetta, ingrediente, esporta, importa, ecc.).
+
+---
+
 ## 2026-05-16 (v7 — Tipo Pane + Lievito Madre)
 
 ### Tipo ricetta Pane

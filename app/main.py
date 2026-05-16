@@ -14,6 +14,7 @@ app = FastAPI(title="Breaking Bread")
 db.init_db()
 db.seed_ingredients()
 db.seed_timing_templates()
+db.backfill_timing_templates()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -462,9 +463,21 @@ class TimingTemplateStepsBody(BaseModel):
     steps: list
 
 
+class TimingTemplateBody(BaseModel):
+    key: str
+    name: str
+    calendar_color_id: str = "2"
+    steps: list
+
+
 @app.get("/api/timing-templates")
 def list_timing_templates():
     return db.get_timing_templates()
+
+
+@app.post("/api/timing-templates", status_code=201)
+def create_timing_template(body: TimingTemplateBody):
+    return db.create_timing_template(body.key, body.name, body.calendar_color_id, body.steps)
 
 
 @app.put("/api/timing-templates/{key}")

@@ -72,6 +72,7 @@
     <!-- Sub-view: Tempistiche -->
     <div id="settings-view-tempistiche" class="settings-view" style="display:none">
       <p class="settings-section-desc" style="padding:12px 0 4px">Modifica i tempi (in minuti) usati dal pianificatore per calcolare la timeline. Estate = aprile–ottobre.</p>
+      <button class="btn btn-secondary" id="btn-add-timing-template" style="margin-bottom:12px">+ Aggiungi Template</button>
       <div id="impostazioni-timing">
         <!-- Timing templates rendered by JS -->
         <div class="empty-state"><p>Caricamento...</p></div>
@@ -573,6 +574,41 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="btn-nota-share">Condividi 📤</button>
       <button class="btn btn-secondary" id="modal-nota-close2">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Nuovo Template Pianificatore ────────────────────────────── -->
+<div class="modal-overlay" id="modal-new-timing">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Nuovo Template Pianificatore</h3>
+      <button class="btn-icon" onclick="closeModal('modal-new-timing')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Chiave univoca (es. pane_segale)</label>
+        <input type="text" id="nt-key" placeholder="pane_segale">
+      </div>
+      <div class="form-group">
+        <label>Etichetta</label>
+        <input type="text" id="nt-label" placeholder="🍞 Pane di Segale">
+      </div>
+      <div class="form-group">
+        <label>Colore Google Calendar</label>
+        <select id="nt-color">
+          <option value="2">Sage (verde)</option>
+          <option value="7">Peacock (teal)</option>
+          <option value="5">Banana (giallo)</option>
+          <option value="10">Basil (verde scuro)</option>
+          <option value="9">Blueberry (blu)</option>
+        </select>
+      </div>
+      <p style="font-size:.85rem;color:var(--text-muted)">Gli step di partenza vengono copiati dal template Pane. Puoi modificarli dopo la creazione.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-new-timing')">Annulla</button>
+      <button class="btn btn-primary" id="btn-save-new-timing">Crea Template</button>
     </div>
   </div>
 </div>
